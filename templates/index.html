@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Annotation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.2.4/fabric.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center; /* Center horizontally */
+        }
+
+        h2 {
+            color: #7c6464; /* Dark gray color for the heading */
+            text-align: left; /* Aligns the heading to the left */
+        }
+
+        ul {
+            padding-left: 40px; /* Adds space to the left of the list */
+            margin: 0; /* Removes default margin */
+            text-align: left;
+        }
+
+        li {
+            color: #000000; /* Medium gray color for list items */
+            font-size: 16px; /* Sets the font size of list items */
+            line-height: 1.5; /* Adds spacing between lines */
+            margin-bottom: 10px; /* Adds space between list items */
+        }
+
+        .container {
+            display: flex;
+            justify-content: flex-start; /* Align canvases to the top */
+            gap: 20px; /* Space between canvas containers */
+            margin-top: 20px; /* Space from the top of the page */
+        }
+
+        .canvas-container {
+            text-align: center; /* Center the title and canvas horizontally */
+            margin-right: 40px; /* spread out items on the horizontal axis */
+        }
+
+        canvas {
+            border: 1px solid black;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="canvas-container">
+        <h2>Annotate eye angles</h2>
+        <ul>
+            <li>Left click and drag left eye key points (see demo annotation)</li>
+            <li>Left click + ctrl and drag to drop right eye key points (see demo annotation)</li>
+            <li>Left click + shift and drag to drop heading key points (see demo annotation)</li>
+            <li>If left, right, or both eyes are missing, label what you can, then click correct button</li>
+
+
+            <li>Use mouse wheel to zoom in / out</li>
+            <li>Use Alt+left click to pan over image</li>
+            <li>Use Esc key to clear annotation and start over</li>
+            <li>Click "save annotation" to save the key points and move to the next image</li>
+        </ul>
+    </div>
+    
+    <div class="container">
+        <div class="canvas-container">
+            <h3>Demo annotation</h3>
+            <canvas id="demo" width="400" height="400"></canvas>
+        </div>
+        <div class="canvas-container">
+            <h3>Current image</h3>
+            <canvas id="canvas" width="400" height="400"></canvas>
+            <button id="leftMissing">Left missing</button>
+            <button id="rightMissing">Right missing</button>
+            <button id="bothMissing">Both missing</button>
+            <button id="saveButton">Save Annotation</button>
+        </div>
+    </div>
+
+    <script>
+
+        // create static background demo image which shows how to annotate
+        const demo = document.getElementById('demo');
+        const ctx_demo = demo.getContext('2d');
+        let backgroundImage = new Image();
+        backgroundImage.src = '{{ demo_path }}';
+        backgroundImage.onload = function() {
+            // Draw the background image once it's loaded
+            ctx_demo.drawImage(backgroundImage, 0, 0, demo.width, demo.height);
+        };
+
+
+        // Create Fabric.js canvas
+        const canvas = new fabric.Canvas('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Load image onto the canvas
+        function draw_bg_image(image_path) {
+            fabric.Image.fromURL('{{ image_path }}', function(img) {
+            img.scaleToWidth(400);
+            canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+        });
+        };
+        console.log('{{ image_path }}');
+        draw_bg_image('{{ image_path }}');
+
+        let leftKeyPoints = [];
+        let rightKeyPoints = [];
+        let headingKeyPoints = [];
+        let leftPointCounter = 0;
+        let rightPointCounter = 0;
+        let headingCounter = 0;
+        let heading_line, headStart, headEnd;
+        let left_line, leftStart, leftEnd;
+        let right_line, rightStart, rightEnd;
+
+        // Add two points on click
+        canvas.on('mouse:down', function(options) {
+            var evt = options.e;
+            if (evt.altKey === true) {
+                this.isDragging = true;
+                this.selection = false;
+                this.lastPosX = evt.clientX;
+                this.lastPosY = evt.clientY;
+            }
+            // left eye annotation
+            else if ((leftPointCounter < 2) && (evt.altKey == false) && (evt.ctrlKey == false) && (evt.button==0) && (evt.shiftKey == false)) {
+                const pointer = canvas.getPointer(options.e);   
+                this.drawingLeft = true;   
+                // Create start dot
+                leftStart = new fabric.Circle({
+                    left: pointer.x,
+                    top: pointer.y,
+                    radius: 4,
+                    fill: 'orange',
+                    originX: 'center',
+                    originY: 'center',
+                    selectable: false
+                });
+
+                // Create end dot (initially at the same position as start)
+                leftEnd = new fabric.Circle({
+                    left: pointer.x,
+                    top: pointer.y,
+                    radius: 4,
+                    fill: 'orange',
+                    originX: 'center',
+                    originY: 'center',
+                    selectable: false
+                });
+
+                // Create line
+                left_line = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
+                    stroke: 'orange',
+                    strokeWidth: 2,
+                    selectable: false
+                });
+
+                canvas.add(left_line, leftStart, leftEnd);
+                leftKeyPoints.push({ x: pointer.x, y: pointer.y });
+                leftPointCounter++;
+            }
+            // right eye annotation
+            else if ((rightPointCounter < 2) && (evt.altKey == false) && (evt.ctrlKey == true) && (evt.button==0) && (evt.shiftKey == false)) {
+                const pointer = canvas.getPointer(options.e);   
+                this.drawingRight = true;   
+                // Create start dot
+                rightStart = new fabric.Circle({
+                    left: pointer.x,
+                    top: pointer.y,
+                    radius: 4,
+                    fill: 'blue',
+                    originX: 'center',
+                    originY: 'center',
+                    selectable: false
+                });
+
+                // Create end dot (initially at the same position as start)
+                rightEnd = new fabric.Circle({
+                    left: pointer.x,
+                    top: pointer.y,
+                    radius: 4,
+                    fill: 'blue',
+                    originX: 'center',
+                    originY: 'center',
+                    selectable: false
+                });
+
+                // Create line
+                right_line = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
+                    stroke: 'blue',
+                    strokeWidth: 2,
+                    selectable: false
+                });
+
+                canvas.add(right_line, rightStart, rightEnd);
+                rightKeyPoints.push({ x: pointer.x, y: pointer.y });
+                rightPointCounter++;
+            }
+            // heading annotation
+            else if ((headingCounter < 2) && (evt.altKey == false) && (evt.shiftKey == true) && (evt.button==0)) {
+                const pointer = canvas.getPointer(options.e);   
+                this.drawingHeading = true;   
+                // Create start dot
+                headStart = new fabric.Circle({
+                    left: pointer.x,
+                    top: pointer.y,
+                    radius: 4,
+                    fill: 'red',
+                    originX: 'center',
+                    originY: 'center',
+                    selectable: false
+                });
+
+                // Create end dot (initially at the same position as start)
+                headEnd = new fabric.Circle({
+                    left: pointer.x,
+                    top: pointer.y,
+                    radius: 4,
+                    fill: 'red',
+                    originX: 'center',
+                    originY: 'center',
+                    selectable: false
+                });
+
+                // Create line
+                heading_line = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
+                    stroke: 'red',
+                    strokeWidth: 2,
+                    selectable: false
+                });
+
+                canvas.add(heading_line, headStart, headEnd);
+                headingKeyPoints.push({ x: pointer.x, y: pointer.y });
+                headingCounter++;
+            }
+        });
+
+        canvas.on('mouse:wheel', function(opt) {
+            var delta = opt.e.deltaY;
+            var zoom = canvas.getZoom();
+            zoom *= 0.999 ** delta;
+            if (zoom > 20) zoom = 20;
+            if (zoom < 0.01) zoom = 0.01;
+            canvas.setZoom(zoom);
+            opt.e.preventDefault();
+            opt.e.stopPropagation();
+        });
+
+        canvas.on('mouse:down', function(opt) {
+        var evt = opt.e;
+        if (evt.altKey === true) {
+            this.isDragging = true;
+            this.selection = false;
+            this.lastPosX = evt.clientX;
+            this.lastPosY = evt.clientY;
+        } 
+        });
+        canvas.on('mouse:move', function(opt) {
+        if (this.isDragging) {
+            var e = opt.e;
+            var vpt = this.viewportTransform;
+            vpt[4] += e.clientX - this.lastPosX;
+            vpt[5] += e.clientY - this.lastPosY;
+            this.requestRenderAll();
+            this.lastPosX = e.clientX;
+            this.lastPosY = e.clientY;
+        } 
+        else if (this.drawingHeading) {
+            var e = opt.e;
+            const pointer = canvas.getPointer(opt.e);    
+            heading_line.set({ x2: pointer.x, y2: pointer.y });
+            headEnd.set({ left: pointer.x, top: pointer.y });
+            canvas.renderAll();
+            // save heading values
+            var start = headingKeyPoints[0];
+            headingKeyPoints = [];
+            headingKeyPoints.push(start);
+            headingKeyPoints.push({ x: pointer.x, y: pointer.y });
+            headingCounter++;
+          }
+          else if (this.drawingRight) {
+            var e = opt.e;
+            const pointer = canvas.getPointer(opt.e);    
+            right_line.set({ x2: pointer.x, y2: pointer.y });
+            rightEnd.set({ left: pointer.x, top: pointer.y });
+            canvas.renderAll();
+            // save values
+            var start = rightKeyPoints[0];
+            rightKeyPoints = [];
+            rightKeyPoints.push(start);
+            rightKeyPoints.push({ x: pointer.x, y: pointer.y });
+            rightPointCounter++;
+          }
+          else if (this.drawingLeft) {
+            var e = opt.e;
+            const pointer = canvas.getPointer(opt.e);    
+            left_line.set({ x2: pointer.x, y2: pointer.y });
+            leftEnd.set({ left: pointer.x, top: pointer.y });
+            canvas.renderAll();
+            // save heading values
+            var start = leftKeyPoints[0];
+            leftKeyPoints = [];
+            leftKeyPoints.push(start);
+            leftKeyPoints.push({ x: pointer.x, y: pointer.y });
+            leftPointCounter++;
+          }
+        });
+        canvas.on('mouse:up', function(opt) {
+            // on mouse up we want to recalculate new interaction
+            // for all objects, so we call setViewportTransform
+            this.setViewportTransform(this.viewportTransform);
+            this.isDragging = false;
+            this.selection = true;
+            this.drawingHeading = false;
+            this.drawingRight = false;
+            this.drawingLeft = false;
+        });
+        canvas.on('mouse:leave', function(opt) {
+            this.drawingHeading = false;
+            this.drawingRight = false;
+            this.drawingLeft = false;
+        });
+
+        // handle general keyboard events
+        function handleKeyPress(event) {
+            if (event.key === "Escape") { // Detect 'Esc' key press
+                canvas.getObjects().forEach((obj) => {
+                    if (obj !== canvas.backgroundImage) {
+                        canvas.remove(obj);
+                    }
+                });
+                // clear keypoints
+                leftKeyPoints = [];
+                rightKeyPoints = [];
+                headingKeyPoints = [];
+                leftPointCounter = 0;
+                rightPointCounter = 0;
+                headingCounter = 0;
+                // re-render the canvas
+                canvas.renderAll();
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyPress);
+
+        // Save annotation
+        document.getElementById('saveButton').addEventListener('click', function() {
+            console.log(leftKeyPoints.length);
+            console.log(rightKeyPoints.length);
+            tosave = ((leftKeyPoints.length == 2) && (rightKeyPoints.length == 2) && (headingKeyPoints.length == 2))
+            if (tosave==true) {
+                const annotation = {
+                    left_points: leftKeyPoints,
+                    right_points: rightKeyPoints,
+                    heading_points: headingKeyPoints
+                };
+
+                fetch('/save_annotation', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(annotation),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    leftKeyPoints = [];
+                    rightKeyPoints = [];
+                    headingKeyPoints = [];
+                    leftPointCounter = 0;
+                    rightPointCounter = 0;
+                    headingCounter = 0;
+                    canvas.clear();
+                    loadImageToCanvas(data.image_path);
+                })
+                .catch((error) => {
+                    console.error('Error:', error);
+                });
+            } else {
+                alert('Please label all key points as shown in the demo annotation.');
+            }
+        });
+
+        document.getElementById('leftMissing').addEventListener('click', function() {
+            tosave = ((rightKeyPoints.length == 2) && (headingKeyPoints.length == 2))
+            if (tosave==true) {
+                const annotation = {
+                    left_points: [],
+                    right_points: rightKeyPoints,
+                    heading_points: headingKeyPoints
+                };
+
+                fetch('/save_annotation', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(annotation),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    leftKeyPoints = [];
+                    rightKeyPoints = [];
+                    headingKeyPoints = [];
+                    leftPointCounter = 0;
+                    rightPointCounter = 0;
+                    headingCounter = 0;
+                    canvas.clear();
+                    loadImageToCanvas(data.image_path);
+                })
+                .catch((error) => {
+                    console.error('Error:', error);
+                });
+            } else {
+                alert('Left eye missing, still need to label right and heading.');
+            }
+        });
+
+        document.getElementById('rightMissing').addEventListener('click', function() {
+            tosave = ((leftKeyPoints.length == 2) && (headingKeyPoints.length == 2))
+            if (tosave==true) {
+                const annotation = {
+                    left_points: leftKeyPoints,
+                    right_points: [],
+                    heading_points: headingKeyPoints
+                };
+
+                fetch('/save_annotation', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(annotation),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    leftKeyPoints = [];
+                    rightKeyPoints = [];
+                    headingKeyPoints = [];
+                    leftPointCounter = 0;
+                    rightPointCounter = 0;
+                    headingCounter = 0;
+                    canvas.clear();
+                    loadImageToCanvas(data.image_path);
+                })
+                .catch((error) => {
+                    console.error('Error:', error);
+                });
+            } else {
+                alert('Right eye is missing. Still need to label left and heading');
+            }
+        });
+
+        document.getElementById('bothMissing').addEventListener('click', function() {
+            tosave = ((leftKeyPoints.length == 0) && (rightKeyPoints.length == 0) && (headingKeyPoints.length == 0))
+            if (tosave==true) {
+                const annotation = {
+                    left_points: [],
+                    right_points: [],
+                    heading_points: []
+                };
+
+                fetch('/save_annotation', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(annotation),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    leftKeyPoints = [];
+                    rightKeyPoints = [];
+                    headingKeyPoints = [];
+                    leftPointCounter = 0;
+                    rightPointCounter = 0;
+                    headingCounter = 0;
+                    canvas.clear();
+                    loadImageToCanvas(data.image_path);
+                })
+                .catch((error) => {
+                    console.error('Error:', error);
+                });
+            } else {
+                alert('Nothing should be labeled. We have no information about the fish in this image.');
+            }
+        });
+
+        function loadImageToCanvas(imageUrl) {
+            console.log(imageUrl);
+            fabric.Image.fromURL(imageUrl, function(img) {
+            img.scaleToWidth(400);
+            canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+        });
+        }
+    </script>
+</body>
+</html>
