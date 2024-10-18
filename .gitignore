@@ -1,0 +1,5 @@
+__pycache__/*
+imgProcessing/__pycache__/*
+loader/__pycache__/*
+annotations/__pycache__/*
+static/*

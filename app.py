@@ -5,6 +5,7 @@ from flask import Flask, render_template, request, jsonify, url_for, make_respon
 import json
 import os
 from loader.data_loader import load_new_image
+from annotations.helpers import convert_keypoints, check_valid_labels
 import subprocess
 from settings import IMG_DIR
 import datetime
@@ -40,9 +41,14 @@ def save_annotation():
     global IMAGE_TMP_PATH, IMAGE_PATH
 
     data = request.json
+
+    # check that valid labels
+    valid, msg = check_valid_labels(data)
+    if valid==False:
+         return jsonify({"message": f"Error: {msg}", "image_path": f"{IMAGE_PATH}"})
     
-    # convert the key point annotations to eye position / angle (the outputs of the model)
-    # processed_data = get_pos_angle(data)
+    # convert the key point annotations to eye distance / angle (the outputs of the model)
+    # processed_data = convert_keypoints(data)
 
     # Save annotation to a file
     name = os.path.basename(IMAGE_TMP_PATH).replace(".png", ".json")

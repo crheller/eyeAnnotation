@@ -142,14 +142,16 @@
                 });
 
                 // Create end dot (initially at the same position as start)
-                leftEnd = new fabric.Circle({
+                leftEnd = new fabric.Triangle({
+                    width: 10,
+                    height: 10,
                     left: pointer.x,
                     top: pointer.y,
-                    radius: 4,
                     fill: 'orange',
                     originX: 'center',
                     originY: 'center',
-                    selectable: false
+                    selectable: false,
+                    angle: 0
                 });
 
                 // Create line
@@ -179,14 +181,16 @@
                 });
 
                 // Create end dot (initially at the same position as start)
-                rightEnd = new fabric.Circle({
+                rightEnd = new fabric.Triangle({
+                    width: 10,
+                    height: 10,
                     left: pointer.x,
                     top: pointer.y,
-                    radius: 4,
                     fill: 'blue',
                     originX: 'center',
                     originY: 'center',
-                    selectable: false
+                    selectable: false,
+                    angle: 0
                 });
 
                 // Create line
@@ -216,14 +220,16 @@
                 });
 
                 // Create end dot (initially at the same position as start)
-                headEnd = new fabric.Circle({
+                headEnd = new fabric.Triangle({
+                    width: 10,
+                    height: 15,
                     left: pointer.x,
                     top: pointer.y,
-                    radius: 4,
                     fill: 'red',
                     originX: 'center',
                     originY: 'center',
-                    selectable: false
+                    selectable: false,
+                    angle: 0
                 });
 
                 // Create line
@@ -273,7 +279,8 @@
             var e = opt.e;
             const pointer = canvas.getPointer(opt.e);    
             heading_line.set({ x2: pointer.x, y2: pointer.y });
-            headEnd.set({ left: pointer.x, top: pointer.y });
+            headEnd.set({ left: pointer.x, top: pointer.y, angle: calculateAngle(headStart.left, headStart.top, pointer.x, pointer.y)+90 });
+            console.log(calculateAngle(headStart.left, headStart.top, pointer.x, pointer.y)+90);
             canvas.renderAll();
             // save heading values
             var start = headingKeyPoints[0];
@@ -286,7 +293,7 @@
             var e = opt.e;
             const pointer = canvas.getPointer(opt.e);    
             right_line.set({ x2: pointer.x, y2: pointer.y });
-            rightEnd.set({ left: pointer.x, top: pointer.y });
+            rightEnd.set({ left: pointer.x, top: pointer.y, angle: calculateAngle(rightStart.left, rightStart.top, pointer.x, pointer.y)+90 });
             canvas.renderAll();
             // save values
             var start = rightKeyPoints[0];
@@ -299,7 +306,7 @@
             var e = opt.e;
             const pointer = canvas.getPointer(opt.e);    
             left_line.set({ x2: pointer.x, y2: pointer.y });
-            leftEnd.set({ left: pointer.x, top: pointer.y });
+            leftEnd.set({ left: pointer.x, top: pointer.y, angle: calculateAngle(leftStart.left, leftStart.top, pointer.x, pointer.y)+90 });
             canvas.renderAll();
             // save heading values
             var start = leftKeyPoints[0];
@@ -344,8 +351,22 @@
                 canvas.renderAll();
             }
         }
-
         window.addEventListener('keydown', handleKeyPress);
+
+        // helper function to compute angle
+        function calculateAngle(x1, y1, x2, y2) {
+            // Calculate the difference between points
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+
+            // Use atan2 to compute the angle in radians
+            const angleRadians = Math.atan2(dy, dx);
+
+            // Convert the angle to degrees (optional)
+            const angleDegrees = angleRadians * (180 / Math.PI);
+
+            return angleDegrees; // You can return either radians or degrees
+        }
 
         // Save annotation
         document.getElementById('saveButton').addEventListener('click', function() {
