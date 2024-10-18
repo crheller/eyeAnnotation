@@ -52,8 +52,8 @@
     <div class="canvas-container">
         <h2>Annotate eye angles</h2>
         <ul>
-            <li>Left click and drag left eye key points (see demo annotation)</li>
-            <li>Left click + ctrl and drag to drop right eye key points (see demo annotation)</li>
+            <li>Left click + "l" and drag for left eye key points (see demo annotation)</li>
+            <li>Left click + "r" and drag for right eye key points (see demo annotation)</li>
             <li>Left click + shift and drag to drop heading key points (see demo annotation)</li>
             <li>If left, right, or both eyes are missing, label what you can, then click correct button</li>
 
@@ -116,6 +116,8 @@
         let heading_line, headStart, headEnd;
         let left_line, leftStart, leftEnd;
         let right_line, rightStart, rightEnd;
+        let Lkeypressed = false;
+        let Rkeypressed = false;
 
         // Add two points on click
         canvas.on('mouse:down', function(options) {
@@ -127,7 +129,7 @@
                 this.lastPosY = evt.clientY;
             }
             // left eye annotation
-            else if ((leftPointCounter < 2) && (evt.altKey == false) && (evt.ctrlKey == false) && (evt.button==0) && (evt.shiftKey == false)) {
+            else if ((leftPointCounter < 2) && (evt.altKey == false) && (Lkeypressed == true) && (evt.button==0) && (evt.shiftKey == false)) {
                 const pointer = canvas.getPointer(options.e);   
                 this.drawingLeft = true;   
                 // Create start dot
@@ -166,7 +168,7 @@
                 leftPointCounter++;
             }
             // right eye annotation
-            else if ((rightPointCounter < 2) && (evt.altKey == false) && (evt.ctrlKey == true) && (evt.button==0) && (evt.shiftKey == false)) {
+            else if ((rightPointCounter < 2) && (evt.altKey == false) && (Rkeypressed == true) && (evt.button==0) && (evt.shiftKey == false)) {
                 const pointer = canvas.getPointer(options.e);   
                 this.drawingRight = true;   
                 // Create start dot
@@ -216,7 +218,9 @@
                     fill: 'red',
                     originX: 'center',
                     originY: 'center',
-                    selectable: false
+                    selectable: false,
+                    hasControls: false,  
+                    hasBorders: false
                 });
 
                 // Create end dot (initially at the same position as start)
@@ -229,6 +233,8 @@
                     originX: 'center',
                     originY: 'center',
                     selectable: false,
+                    hasControls: false,  
+                    hasBorders: false,
                     angle: 0
                 });
 
@@ -236,7 +242,10 @@
                 heading_line = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
                     stroke: 'red',
                     strokeWidth: 2,
-                    selectable: false
+                    selectable: false,
+                    evented: false,
+                    hasControls: false,  
+                    hasBorders: false
                 });
 
                 canvas.add(heading_line, headStart, headEnd);
@@ -280,7 +289,6 @@
             const pointer = canvas.getPointer(opt.e);    
             heading_line.set({ x2: pointer.x, y2: pointer.y });
             headEnd.set({ left: pointer.x, top: pointer.y, angle: calculateAngle(headStart.left, headStart.top, pointer.x, pointer.y)+90 });
-            console.log(calculateAngle(headStart.left, headStart.top, pointer.x, pointer.y)+90);
             canvas.renderAll();
             // save heading values
             var start = headingKeyPoints[0];
@@ -350,8 +358,23 @@
                 // re-render the canvas
                 canvas.renderAll();
             }
+            else if (event.key === "l") {
+                Lkeypressed = true
+            }
+            else if (event.key === "r") {
+                Rkeypressed = true
+            }
+        }
+        function handleKeyUp(event) {
+            if (event.key === "l") {
+                Lkeypressed = false
+            }
+            if (event.key === "r") {
+                Rkeypressed = false
+            }
         }
         window.addEventListener('keydown', handleKeyPress);
+        window.addEventListener('keyup', handleKeyUp);
 
         // helper function to compute angle
         function calculateAngle(x1, y1, x2, y2) {
@@ -370,8 +393,6 @@
 
         // Save annotation
         document.getElementById('saveButton').addEventListener('click', function() {
-            console.log(leftKeyPoints.length);
-            console.log(rightKeyPoints.length);
             tosave = ((leftKeyPoints.length == 2) && (rightKeyPoints.length == 2) && (headingKeyPoints.length == 2))
             if (tosave==true) {
                 const annotation = {
@@ -389,7 +410,7 @@
                 })
                 .then(response => response.json())
                 .then(data => {
-                    alert(data.message);
+                    // alert(data.message);
                     leftKeyPoints = [];
                     rightKeyPoints = [];
                     headingKeyPoints = [];

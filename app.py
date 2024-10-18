@@ -42,13 +42,13 @@ def save_annotation():
 
     data = request.json
 
-    # check that valid labels
     valid, msg = check_valid_labels(data)
     if valid==False:
-         return jsonify({"message": f"Error: {msg}", "image_path": f"{IMAGE_PATH}"})
+         samepath = url_for('static', filename=IMAGE_PATH)
+         return jsonify({"message": f"Error: {msg}", "image_path": f"{samepath}"})
     
     # convert the key point annotations to eye distance / angle (the outputs of the model)
-    # processed_data = convert_keypoints(data)
+    processed_data = convert_keypoints(data, msg)
 
     # Save annotation to a file
     name = os.path.basename(IMAGE_TMP_PATH).replace(".png", ".json")
@@ -60,7 +60,7 @@ def save_annotation():
     with open(savefile, 'r') as f:  
         annotations = json.load(f)
     
-    annotations.append(data)
+    annotations.append(processed_data)
 
     with open(savefile, 'w') as f:
         json.dump(annotations, f)
@@ -73,7 +73,7 @@ def save_annotation():
     # subprocess.Popen(['touch', 'app.py'])
 
     # get a new image / remove old one
-    ftodelete = glob.glob('static/image*')
+    ftodelete = glob.glob(f'static/{IMAGE_PATH}')
     subprocess.Popen(['rm'] + ftodelete)
     now = datetime.datetime.now()
     uid = now.strftime('%y%m%d_%H%M%S')
@@ -82,7 +82,7 @@ def save_annotation():
     # but also need to keep track of this filename so that we know how to save the annotations...
     path = url_for('static', filename=f"image{uid}.png")
     
-    return jsonify({"message": "Annotation saved successfully! Loading next image", "image_path": f"{path}"})
+    return jsonify({"image_path": f"{path}"})
 
 
 if __name__ == '__main__':
