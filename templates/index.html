@@ -398,7 +398,9 @@
                 const annotation = {
                     left_points: leftKeyPoints,
                     right_points: rightKeyPoints,
-                    heading_points: headingKeyPoints
+                    heading_points: headingKeyPoints,
+                    canvasHeight: canvas.getHeight(),
+                    canvasWidth: canvas.getWidth(),
                 };
 
                 fetch('/save_annotation', {

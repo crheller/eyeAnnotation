@@ -2,6 +2,7 @@ import sys
 sys.path.append("/home/charlie/code/eyeAnnotation")
 import math
 import numpy as np
+from PIL import Image
 
 def is_right_of_line(line_start, line_end, point):
     """
@@ -78,11 +79,15 @@ def calculateAngle(l1, l2):
     return -1 * angleRads
 
 
-def convert_keypoints(data, msg=""):
+def convert_keypoints(data, img_path, msg=""):
     """
     convert dictionary of keypoints to angle / distance between eyes
     return result as dictionary
     """
+    # convert back to raw image pixels (since we upsample for the Fabric.js canvas)
+    img = np.array(Image.open(img_path))
+    conversion_factor_x = img.shape[0] / data["canvasWidth"]
+    conversion_factor_y = img.shape[1] / data["canvasWidth"]
     if msg=="":
         left_vec = np.array([data["left_points"][1]["x"]-data["left_points"][0]["x"], data["left_points"][1]["y"]-data["left_points"][0]["y"]])
         right_vec = np.array([data["right_points"][1]["x"]-data["right_points"][0]["x"], data["right_points"][1]["y"]-data["right_points"][0]["y"]])
@@ -90,6 +95,7 @@ def convert_keypoints(data, msg=""):
         
         left_eye_angle = calculateAngle(left_vec, heading_vec)
         right_eye_angle = calculateAngle(right_vec, heading_vec)
+        heading_angle = calculateAngle(heading_vec, [1, 0])
 
         midpoint_left = np.array([(data["left_points"][1]["x"]+data["left_points"][0]["x"])/2, (data["left_points"][1]["y"]+data["left_points"][0]["y"])/2])
         midpoint_right = np.array([(data["right_points"][1]["x"]+data["right_points"][0]["x"])/2, (data["right_points"][1]["y"]+data["right_points"][0]["y"])/2])
@@ -97,7 +103,13 @@ def convert_keypoints(data, msg=""):
         data = {
             "left_eye_angle": left_eye_angle,
             "right_eye_angle": right_eye_angle,
-            "distance_eyes": np.linalg.norm(midpoint_left - midpoint_right),
+            "heading_angle": heading_angle,
+            "left_eye_x_position": midpoint_left[0] * conversion_factor_x,
+            "left_eye_y_position": midpoint_left[1] * conversion_factor_y,
+            "right_eye_x_position": midpoint_right[0] * conversion_factor_x,
+            "right_eye_y_position": midpoint_right[1] * conversion_factor_y,
+            "yolk_x_position": data["heading_points"][0]["x"] * conversion_factor_x,
+            "yolk_y_position": data["heading_points"][0]["y"] * conversion_factor_y,
             "right_eye_missing": 0,
             "left_eye_missing": 0,
             "both_eyes_missing": 0
@@ -108,10 +120,18 @@ def convert_keypoints(data, msg=""):
         right_vec = np.array([data["right_points"][1]["x"]-data["right_points"][0]["x"], data["right_points"][1]["y"]-data["right_points"][0]["y"]])
         heading_vec = np.array([data["heading_points"][1]["x"]-data["heading_points"][0]["x"], data["heading_points"][1]["y"]-data["heading_points"][0]["y"]])
         right_eye_angle = calculateAngle(right_vec, heading_vec)
+        heading_angle = calculateAngle(heading_vec, [1, 0])
+        midpoint_right = np.array([(data["right_points"][1]["x"]+data["right_points"][0]["x"])/2, (data["right_points"][1]["y"]+data["right_points"][0]["y"])/2])
         data = {
             "left_eye_angle": 0,
             "right_eye_angle": right_eye_angle,
-            "distance_eyes": 0,
+            "heading_angle": heading_angle,
+            "left_eye_x_position": 0,
+            "left_eye_y_position": 0,
+            "right_eye_x_position": midpoint_right[0] * conversion_factor_x,
+            "right_eye_y_position": midpoint_right[1] * conversion_factor_y,
+            "yolk_x_position": data["heading_points"][0]["x"] * conversion_factor_x,
+            "yolk_y_position": data["heading_points"][0]["y"] * conversion_factor_y,
             "right_eye_missing": 0,
             "left_eye_missing": 1,
             "both_eyes_missing": 0
@@ -122,10 +142,17 @@ def convert_keypoints(data, msg=""):
         left_vec = np.array([data["left_points"][1]["x"]-data["left_points"][0]["x"], data["left_points"][1]["y"]-data["left_points"][0]["y"]])
         heading_vec = np.array([data["heading_points"][1]["x"]-data["heading_points"][0]["x"], data["heading_points"][1]["y"]-data["heading_points"][0]["y"]])
         left_eye_angle = calculateAngle(left_vec, heading_vec)
+        heading_angle = calculateAngle(heading_vec, [1, 0])
         data = {
             "left_eye_angle": left_eye_angle,
             "right_eye_angle": 0,
-            "distance_eyes": 0,
+            "heading_angle": heading_angle,
+            "left_eye_x_position": midpoint_left[0] * conversion_factor_x,
+            "left_eye_y_position": midpoint_left[1] * conversion_factor_y,
+            "right_eye_x_position": 0,
+            "right_eye_y_position": 0,
+            "yolk_x_position": data["heading_points"][0]["x"] * conversion_factor_x,
+            "yolk_y_position": data["heading_points"][0]["y"] * conversion_factor_y,
             "right_eye_missing": 1,
             "left_eye_missing": 0,
             "both_eyes_missing": 0
@@ -136,7 +163,13 @@ def convert_keypoints(data, msg=""):
         data = {
             "left_eye_angle": 0,
             "right_eye_angle": 0,
-            "distance_eyes": 0,
+            "heading_angle": 0,
+            "left_eye_x_position": 0,
+            "left_eye_y_position": 0,
+            "right_eye_x_position": 0,
+            "right_eye_y_position": 0,
+            "yolk_x_position": 0,
+            "yolk_y_position": 0,
             "right_eye_missing": 1,
             "left_eye_missing": 1,
             "both_eyes_missing": 1

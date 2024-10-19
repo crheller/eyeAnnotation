@@ -1,6 +1,5 @@
 import sys
 sys.path.append("/home/charlie/code/eyeAnnotation")
-from settings import IMG_DIR
 import pymongo as pym
 import paths
 import numpy as np

@@ -4,7 +4,7 @@ import numpy as np
 import h5py
 from scipy.ndimage import rotate
 import paths
-from settings import IMG_DIR
+from settings import IMG_DIR, IMG_X_DIM, IMG_Y_DIM
 import os
 import json
 import matplotlib.pyplot as plt
@@ -27,10 +27,11 @@ def save_egocentric(pyimg, ds, frame_idx, n_frames):
     newimg = rotate(_img, rdeg)
     mx, my = (int(t/2) for t in newimg.shape)
     bf.close()
-    final_img = newimg[mx-30:mx+31, my-30:my+31]
-    print(datetime.datetime.now())
+    mmx = int(IMG_X_DIM / 2)
+    mmy = int(IMG_Y_DIM / 2)
+    final_img = newimg[mx-mmx:mx+mmx, my-mmy:my+mmy]
+    
     # save the image into a temp directory (gets moved up when it's annotated)
     savepath = os.path.join(IMG_DIR, "tmp", f"{ds[0]}_{ds[-1]}_{frame_idx}.png")
     plt.imsave(savepath, final_img, cmap="gray")
-    print(datetime.datetime.now())
     return savepath

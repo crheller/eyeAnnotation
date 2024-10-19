@@ -48,7 +48,7 @@ def save_annotation():
          return jsonify({"message": f"Error: {msg}", "image_path": f"{samepath}"})
     
     # convert the key point annotations to eye distance / angle (the outputs of the model)
-    processed_data = convert_keypoints(data, msg)
+    processed_data = convert_keypoints(data, IMAGE_TMP_PATH, msg)
 
     # Save annotation to a file
     name = os.path.basename(IMAGE_TMP_PATH).replace(".png", ".json")
