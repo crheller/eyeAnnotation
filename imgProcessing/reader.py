@@ -37,3 +37,35 @@ def read_random(rolipath):
             count+=1
 
     return pyimg, frame_idx, n_frames.contents.value
+
+def get_file_handle(rolipath):
+    return lib.roli_fse_open(rolipath.encode("utf-8"))
+
+def get_hwn(f):
+    """
+    get height / width / n_frames for a dataset
+    """
+    # pick a frame index
+    n_frames = ctypes.POINTER(ctypes.c_uint64)(ctypes.c_uint64(0))
+    lib.roli_fse_get_n_frames(f, n_frames)
+
+    # read the frame
+    width = ctypes.POINTER(ctypes.c_uint32)(ctypes.c_uint32(0))
+    lib.roli_fse_get_width(f, width)
+    height = ctypes.POINTER(ctypes.c_uint32)(ctypes.c_uint32(0))
+    lib.roli_fse_get_height(f, height)
+
+    return int(width.contents.value), int(height.contents.value), int(n_frames.contents.value)
+
+def read_frame(handle, height, width, idx):
+    img = np.zeros((int(width), int(height)), dtype=np.uint16).ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
+    lib.roli_fse_read(handle, img, ctypes.c_int(idx))
+
+    pyimg = np.zeros(((int(width), int(height))))
+    count = 0
+    for i in range(width):
+        for j in range(height):
+            pyimg[i, j] = img[count]
+            count+=1
+
+    return pyimg

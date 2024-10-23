@@ -29,43 +29,19 @@ def is_right_of_line(line_start, line_end, point):
 
 def check_valid_labels(data):
     """
-    Check that the labels are valid (left eye is to the left of heading vector and right eye is to the right)
-    """ 
-    if (data["left_points"]==[]) & (data["right_points"]!=[]):
-        line_start = data["heading_points"][0]["x"], data["heading_points"][0]["y"]
-        line_end = data["heading_points"][1]["x"], data["heading_points"][1]["y"]
-        valid = (is_right_of_line(line_start, line_end, (data["right_points"][0]["x"], data["right_points"][0]["y"]))==True) & \
-            (is_right_of_line(line_start, line_end, (data["right_points"][1]["x"], data["right_points"][1]["y"]))==True)
-        if valid:
-            return valid, "missing_left"
-        else:
-            return valid, "all left eye points must be to the left of heading, and all right to the right"
-        
-    elif (data["left_points"]!=[]) & (data["right_points"]==[]):
-        line_start = data["heading_points"][0]["x"], data["heading_points"][0]["y"]
-        line_end = data["heading_points"][1]["x"], data["heading_points"][1]["y"]
-        valid = (is_right_of_line(line_start, line_end, (data["left_points"][0]["x"], data["left_points"][0]["y"]))==False) & \
-            (is_right_of_line(line_start, line_end, (data["left_points"][1]["x"], data["left_points"][1]["y"]))==False)
-        if valid:
-            return valid, "missing_right"
-        else:
-            return valid, "all left eye points must be to the left of heading, and all right to the right"
-        
-    elif (data["left_points"]==[]) & (data["right_points"]==[]):
-        return True, "missing_both"
-
+    Rewrite for ellipse data
+    """
+    if len(data.keys())==0:
+        return True, "empty frame"
+    line_start = data["heading_points"][0]["x"], data["heading_points"][0]["y"]
+    line_end = data["heading_points"][1]["x"], data["heading_points"][1]["y"]
+    valid = (is_right_of_line(line_start, line_end, (data["right_eye_x_position"], data["right_eye_y_position"]))==True) & \
+        (is_right_of_line(line_start, line_end, (data["left_eye_x_position"], data["left_eye_y_position"]))==False)
+    if valid:
+        return valid, ""
     else:
-        line_start = data["heading_points"][0]["x"], data["heading_points"][0]["y"]
-        line_end = data["heading_points"][1]["x"], data["heading_points"][1]["y"]
-        valid = (is_right_of_line(line_start, line_end, (data["right_points"][0]["x"], data["right_points"][0]["y"]))==True) & \
-            (is_right_of_line(line_start, line_end, (data["right_points"][1]["x"], data["right_points"][1]["y"]))==True) & \
-            (is_right_of_line(line_start, line_end, (data["left_points"][0]["x"], data["left_points"][0]["y"]))==False) & \
-            (is_right_of_line(line_start, line_end, (data["left_points"][1]["x"], data["left_points"][1]["y"]))==False)
-        if valid:
-            return valid, ""
-        else:
-            return valid, "all left eye points must be to the left of heading, and all right to the right"
-
+        return valid, "all left eye points must be to the left of heading, and all right to the right"
+    
 
 def calculateAngle(l1, l2):
 
@@ -76,102 +52,54 @@ def calculateAngle(l1, l2):
 
     angleRads = np.sign(cross_prod) * math.acos(l1.dot(l2))
 
+    # if angleRads < 0:
+    #     angleRads += 2*math.pi
+
     return -1 * angleRads
+    
 
-
-def convert_keypoints(data, img_path, msg=""):
+def package_annotations(data, img_path, msg=""):
     """
-    convert dictionary of keypoints to angle / distance between eyes
-    return result as dictionary
+    New function 22.10.24 to handle new annotations -- which are ellipses for the eyes instead of keypoints
     """
+    print(data)
     # convert back to raw image pixels (since we upsample for the Fabric.js canvas)
     img = np.array(Image.open(img_path))
     conversion_factor_x = img.shape[0] / data["canvasWidth"]
     conversion_factor_y = img.shape[1] / data["canvasWidth"]
-    if msg=="":
-        left_vec = np.array([data["left_points"][1]["x"]-data["left_points"][0]["x"], data["left_points"][1]["y"]-data["left_points"][0]["y"]])
-        right_vec = np.array([data["right_points"][1]["x"]-data["right_points"][0]["x"], data["right_points"][1]["y"]-data["right_points"][0]["y"]])
-        heading_vec = np.array([data["heading_points"][1]["x"]-data["heading_points"][0]["x"], data["heading_points"][1]["y"]-data["heading_points"][0]["y"]])
-        
-        left_eye_angle = calculateAngle(left_vec, heading_vec)
-        right_eye_angle = calculateAngle(right_vec, heading_vec)
-        heading_angle = calculateAngle(heading_vec, [1, 0])
-
-        midpoint_left = np.array([(data["left_points"][1]["x"]+data["left_points"][0]["x"])/2, (data["left_points"][1]["y"]+data["left_points"][0]["y"])/2])
-        midpoint_right = np.array([(data["right_points"][1]["x"]+data["right_points"][0]["x"])/2, (data["right_points"][1]["y"]+data["right_points"][0]["y"])/2])
-
-        data = {
-            "left_eye_angle": left_eye_angle,
-            "right_eye_angle": right_eye_angle,
-            "heading_angle": heading_angle,
-            "left_eye_x_position": midpoint_left[0] * conversion_factor_x,
-            "left_eye_y_position": midpoint_left[1] * conversion_factor_y,
-            "right_eye_x_position": midpoint_right[0] * conversion_factor_x,
-            "right_eye_y_position": midpoint_right[1] * conversion_factor_y,
-            "yolk_x_position": data["heading_points"][0]["x"] * conversion_factor_x,
-            "yolk_y_position": data["heading_points"][0]["y"] * conversion_factor_y,
-            "right_eye_missing": 0,
-            "left_eye_missing": 0,
-            "both_eyes_missing": 0
-        }
-        return data
-
-    elif msg=="missing_left":
-        right_vec = np.array([data["right_points"][1]["x"]-data["right_points"][0]["x"], data["right_points"][1]["y"]-data["right_points"][0]["y"]])
-        heading_vec = np.array([data["heading_points"][1]["x"]-data["heading_points"][0]["x"], data["heading_points"][1]["y"]-data["heading_points"][0]["y"]])
-        right_eye_angle = calculateAngle(right_vec, heading_vec)
-        heading_angle = calculateAngle(heading_vec, [1, 0])
-        midpoint_right = np.array([(data["right_points"][1]["x"]+data["right_points"][0]["x"])/2, (data["right_points"][1]["y"]+data["right_points"][0]["y"])/2])
-        data = {
-            "left_eye_angle": 0,
-            "right_eye_angle": right_eye_angle,
-            "heading_angle": heading_angle,
-            "left_eye_x_position": 0,
-            "left_eye_y_position": 0,
-            "right_eye_x_position": midpoint_right[0] * conversion_factor_x,
-            "right_eye_y_position": midpoint_right[1] * conversion_factor_y,
-            "yolk_x_position": data["heading_points"][0]["x"] * conversion_factor_x,
-            "yolk_y_position": data["heading_points"][0]["y"] * conversion_factor_y,
-            "right_eye_missing": 0,
-            "left_eye_missing": 1,
-            "both_eyes_missing": 0
-        }
-        return data
     
-    elif msg=="missing_right":
-        left_vec = np.array([data["left_points"][1]["x"]-data["left_points"][0]["x"], data["left_points"][1]["y"]-data["left_points"][0]["y"]])
-        heading_vec = np.array([data["heading_points"][1]["x"]-data["heading_points"][0]["x"], data["heading_points"][1]["y"]-data["heading_points"][0]["y"]])
-        left_eye_angle = calculateAngle(left_vec, heading_vec)
-        heading_angle = calculateAngle(heading_vec, [1, 0])
-        data = {
-            "left_eye_angle": left_eye_angle,
-            "right_eye_angle": 0,
-            "heading_angle": heading_angle,
-            "left_eye_x_position": midpoint_left[0] * conversion_factor_x,
-            "left_eye_y_position": midpoint_left[1] * conversion_factor_y,
-            "right_eye_x_position": 0,
-            "right_eye_y_position": 0,
-            "yolk_x_position": data["heading_points"][0]["x"] * conversion_factor_x,
-            "yolk_y_position": data["heading_points"][0]["y"] * conversion_factor_y,
-            "right_eye_missing": 1,
-            "left_eye_missing": 0,
-            "both_eyes_missing": 0
-        }
-        return data
+    heading_vec = np.array([data["heading_points"][1]["x"]-data["heading_points"][0]["x"], data["heading_points"][1]["y"]-data["heading_points"][0]["y"]])
+    heading_angle = calculateAngle(heading_vec, [1, 0]) # sign flip because y-axis is flipped
 
-    elif msg=="missing_both":
-        data = {
-            "left_eye_angle": 0,
-            "right_eye_angle": 0,
-            "heading_angle": 0,
-            "left_eye_x_position": 0,
-            "left_eye_y_position": 0,
-            "right_eye_x_position": 0,
-            "right_eye_y_position": 0,
-            "yolk_x_position": 0,
-            "yolk_y_position": 0,
-            "right_eye_missing": 1,
-            "left_eye_missing": 1,
-            "both_eyes_missing": 1
-        }
-        return data
+    # eye angles should be saved relative to heading
+    # to do this, we make a mock vector
+    left_x = math.cos(np.deg2rad(data["left_eye_angle"])) 
+    left_y = -math.sin(np.deg2rad(data["left_eye_angle"])) 
+    right_x = math.cos(np.deg2rad(data["right_eye_angle"])) 
+    right_y = -math.sin(np.deg2rad(data["right_eye_angle"]))
+
+    left_vec = np.array([left_x, left_y])
+    right_vec = np.array([right_x, right_y])
+    left_eye_angle = calculateAngle(left_vec, heading_vec)
+    right_eye_angle = calculateAngle(right_vec, heading_vec)
+
+    left_eye_x_position = data["left_eye_x_position"] * conversion_factor_x
+    left_eye_y_position = data["left_eye_y_position"] * conversion_factor_y
+    right_eye_x_position = data["right_eye_x_position"] * conversion_factor_x
+    right_eye_y_position = data["right_eye_y_position"] * conversion_factor_y
+    data = {
+        "left_eye_angle": left_eye_angle,
+        "right_eye_angle": right_eye_angle,
+        "heading_angle": heading_angle,
+        "left_eye_x_position": left_eye_x_position,
+        "left_eye_y_position": left_eye_y_position,
+        "right_eye_x_position": right_eye_x_position,
+        "right_eye_y_position": right_eye_y_position,
+        "yolk_x_position": data["heading_points"][0]["x"] * conversion_factor_x,
+        "yolk_y_position": data["heading_points"][0]["y"] * conversion_factor_y,
+        "right_eye_missing": 0,
+        "left_eye_missing": 0,
+        "both_eyes_missing": 0
+    }
+
+    return data

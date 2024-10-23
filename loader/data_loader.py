@@ -16,10 +16,12 @@ def load_new_image():
     # select a dataset
     ds = datasets[np.random.choice(range(len(datasets)))]
     rolipath = paths.locate(ds[0], ds[1], f"ir_{ds[2]}.roli", raw=True)
-
-    pyimg, frame_idx, n_frames = reader.read_random(rolipath)
-        
+       
     # zoom and make ego centric
-    imgpath = imh.save_egocentric(pyimg, ds, frame_idx, n_frames)
+    # read frames until we get one that is not empty (can happen if tracking was lost)
+    imgpath = False
+    while imgpath == False:
+        pyimg, frame_idx, n_frames = reader.read_random(rolipath)
+        imgpath = imh.save_egocentric(pyimg, ds, frame_idx, n_frames)
 
     return imgpath

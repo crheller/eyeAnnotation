@@ -52,9 +52,9 @@
     <div class="canvas-container">
         <h2>Annotate eye angles</h2>
         <ul>
-            <li>Left click + "l" and drag for left eye key points (see demo annotation)</li>
-            <li>Left click + "r" and drag for right eye key points (see demo annotation)</li>
-            <li>Left click + shift and drag to drop heading key points (see demo annotation)</li>
+            <li>Left click + "l" and drag for left eye ellipse</li>
+            <li>Left click + "r" and drag for right eye ellipse</li>
+            <li>Left click + shift and drag to drop heading arrow</li>
             <li>If left, right, or both eyes are missing, label what you can, then click correct button</li>
 
 
@@ -73,9 +73,7 @@
         <div class="canvas-container">
             <h3>Current image</h3>
             <canvas id="canvas" width="400" height="400"></canvas>
-            <button id="leftMissing">Left missing</button>
-            <button id="rightMissing">Right missing</button>
-            <button id="bothMissing">Both missing</button>
+            <button id="bothMissing">Bad Frame</button>
             <button id="saveButton">Save Annotation</button>
         </div>
     </div>
@@ -107,17 +105,22 @@
         console.log('{{ image_path }}');
         draw_bg_image('{{ image_path }}');
 
-        let leftKeyPoints = [];
-        let rightKeyPoints = [];
         let headingKeyPoints = [];
-        let leftPointCounter = 0;
-        let rightPointCounter = 0;
         let headingCounter = 0;
         let heading_line, headStart, headEnd;
-        let left_line, leftStart, leftEnd;
-        let right_line, rightStart, rightEnd;
+        
+
+        // left eye ellipse
         let Lkeypressed = false;
+        let left_drawn = false;
+        var isDrawingLeftEye = false;
+        var LeftEye, origX_left, origY_left, leftMajorAxisLine;
+
+        // right eye ellipse
         let Rkeypressed = false;
+        let right_drawn = false;
+        var isDrawingRightEye = false;
+        var RightEye, origX_right, origY_right;
 
         // Add two points on click
         canvas.on('mouse:down', function(options) {
@@ -128,83 +131,29 @@
                 this.lastPosX = evt.clientX;
                 this.lastPosY = evt.clientY;
             }
-            // left eye annotation
-            else if ((leftPointCounter < 2) && (evt.altKey == false) && (Lkeypressed == true) && (evt.button==0) && (evt.shiftKey == false)) {
-                const pointer = canvas.getPointer(options.e);   
-                this.drawingLeft = true;   
-                // Create start dot
-                leftStart = new fabric.Circle({
-                    left: pointer.x,
-                    top: pointer.y,
-                    radius: 4,
-                    fill: 'orange',
-                    originX: 'center',
-                    originY: 'center',
-                    selectable: false
-                });
+            // Left Eye
+            else if ((evt.altKey == false) && (left_drawn==false) && (Lkeypressed == true) && (Rkeypressed == false) && (evt.button==0) && (evt.shiftKey == false)) {
+                isDrawingLeftEye = true;
+                left_drawn = true;
 
-                // Create end dot (initially at the same position as start)
-                leftEnd = new fabric.Triangle({
-                    width: 10,
-                    height: 10,
-                    left: pointer.x,
-                    top: pointer.y,
-                    fill: 'orange',
-                    originX: 'center',
-                    originY: 'center',
-                    selectable: false,
-                    angle: 0
-                });
+                var pointer = canvas.getPointer(options.e);
+                origX_left = options.pointer.x;
+                origY_left = options.pointer.y;
 
-                // Create line
-                left_line = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
-                    stroke: 'orange',
-                    strokeWidth: 2,
-                    selectable: false
-                });
-
-                canvas.add(left_line, leftStart, leftEnd);
-                leftKeyPoints.push({ x: pointer.x, y: pointer.y });
-                leftPointCounter++;
+                // Initialize with small values; we will dynamically update on mouse move
+                LeftEye = createDirectionalEllipse(0, 0, origX_left, origY_left, "orange", "LeftEye");
+                canvas.add(LeftEye);
             }
-            // right eye annotation
-            else if ((rightPointCounter < 2) && (evt.altKey == false) && (Rkeypressed == true) && (evt.button==0) && (evt.shiftKey == false)) {
-                const pointer = canvas.getPointer(options.e);   
-                this.drawingRight = true;   
-                // Create start dot
-                rightStart = new fabric.Circle({
-                    left: pointer.x,
-                    top: pointer.y,
-                    radius: 4,
-                    fill: 'blue',
-                    originX: 'center',
-                    originY: 'center',
-                    selectable: false
-                });
+            else if ((evt.altKey == false) && (right_drawn==false) && (Rkeypressed == true) && (Lkeypressed == false) && (evt.button==0) && (evt.shiftKey == false)) {
+                isDrawingRightEye = true;
+                right_drawn = true;
+                var pointer = canvas.getPointer(options.e);
+                origX_right = options.pointer.x;
+                origY_right = options.pointer.y;
 
-                // Create end dot (initially at the same position as start)
-                rightEnd = new fabric.Triangle({
-                    width: 10,
-                    height: 10,
-                    left: pointer.x,
-                    top: pointer.y,
-                    fill: 'blue',
-                    originX: 'center',
-                    originY: 'center',
-                    selectable: false,
-                    angle: 0
-                });
-
-                // Create line
-                right_line = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
-                    stroke: 'blue',
-                    strokeWidth: 2,
-                    selectable: false
-                });
-
-                canvas.add(right_line, rightStart, rightEnd);
-                rightKeyPoints.push({ x: pointer.x, y: pointer.y });
-                rightPointCounter++;
+                // Initialize with small values; we will dynamically update on mouse move
+                RightEye = createDirectionalEllipse(0, 0, origX_left, origY_left, "blue", "RightEye");
+                canvas.add(RightEye);
             }
             // heading annotation
             else if ((headingCounter < 2) && (evt.altKey == false) && (evt.shiftKey == true) && (evt.button==0)) {
@@ -284,6 +233,107 @@
             this.lastPosX = e.clientX;
             this.lastPosY = e.clientY;
         } 
+        else if (isDrawingLeftEye) {
+            var pointer = canvas.getPointer(opt.e);
+
+            // Calculate radii based on the current mouse position
+            var rx = Math.abs(pointer.x - origX_left) / 2;
+            var ry = Math.abs(pointer.y - origY_left) / 2;
+
+            // Update the ellipse and other elements in the group
+            LeftEye.item(0).set({
+                        left: -rx,
+                        top: -ry,
+                        rx: rx,
+                        ry: ry,
+                });
+            LeftEye.item(1).set({
+                        x1: 0, y1: -ry, x2: 0, y2: ry  // Update major axis line
+                });
+            LeftEye.item(2).set({
+                        x1: -rx, y1: 0, x2: rx, y2: 0  // Update minor axis line
+                });
+            LeftEye.item(3).set({
+                        left: rx,  // Move the arrow to the end of the major axis
+                        top: 0
+                });
+            // Move the group to the updated position
+            LeftEye.set({
+                    left: pointer.x,
+                    top: pointer.y
+                });
+
+            // Dynamically recalculate and update the bounding box
+            LeftEye._calcBounds = function() {
+                const xMin = pointer.x - rx;
+                const xMax = pointer.x + rx;
+                const yMin = pointer.y - ry;
+                const yMax = pointer.y + ry;
+                
+                // Set group width and height to fit the ellipse tightly
+                LeftEye.width = xMax - xMin;
+                LeftEye.height = yMax - yMin;
+                LeftEye.left = xMin;
+                LeftEye.top = yMin;
+                
+                LeftEye.setCoords();  // Ensure Fabric.js registers the change
+            };
+
+            // Call the bounding box recalculation after adjusting the group elements
+            LeftEye._calcBounds();
+            canvas.renderAll();
+            
+        }
+        else if (isDrawingRightEye) {
+            var pointer = canvas.getPointer(opt.e);
+
+            // Calculate radii based on the current mouse position
+            var rx = Math.abs(pointer.x - origX_right) / 2;
+            var ry = Math.abs(pointer.y - origY_right) / 2;
+
+            // Update the ellipse and other elements in the group
+            RightEye.item(0).set({
+                        left: -rx,
+                        top: -ry,
+                        rx: rx,
+                        ry: ry,
+                });
+            RightEye.item(1).set({
+                        x1: 0, y1: -ry, x2: 0, y2: ry  // Update major axis line
+                });
+            RightEye.item(2).set({
+                        x1: -rx, y1: 0, x2: rx, y2: 0  // Update minor axis line
+                });
+            RightEye.item(3).set({
+                        left: rx,  // Move the arrow to the end of the major axis
+                        top: 0
+                });
+            // Move the group to the updated position
+            RightEye.set({
+                    left: pointer.x,
+                    top: pointer.y
+                });
+
+            // Dynamically recalculate and update the bounding box
+            RightEye._calcBounds = function() {
+                const xMin = pointer.x - rx;
+                const xMax = pointer.x + rx;
+                const yMin = pointer.y - ry;
+                const yMax = pointer.y + ry;
+                
+                // Set group width and height to fit the ellipse tightly
+                RightEye.width = xMax - xMin;
+                RightEye.height = yMax - yMin;
+                RightEye.left = xMin;
+                RightEye.top = yMin;
+                
+                RightEye.setCoords();  // Ensure Fabric.js registers the change
+            };
+
+            // Call the bounding box recalculation after adjusting the group elements
+            RightEye._calcBounds();
+            canvas.renderAll();
+        }
         else if (this.drawingHeading) {
             var e = opt.e;
             const pointer = canvas.getPointer(opt.e);    
@@ -297,32 +347,6 @@
             headingKeyPoints.push({ x: pointer.x, y: pointer.y });
             headingCounter++;
           }
-          else if (this.drawingRight) {
-            var e = opt.e;
-            const pointer = canvas.getPointer(opt.e);    
-            right_line.set({ x2: pointer.x, y2: pointer.y });
-            rightEnd.set({ left: pointer.x, top: pointer.y, angle: calculateAngle(rightStart.left, rightStart.top, pointer.x, pointer.y)+90 });
-            canvas.renderAll();
-            // save values
-            var start = rightKeyPoints[0];
-            rightKeyPoints = [];
-            rightKeyPoints.push(start);
-            rightKeyPoints.push({ x: pointer.x, y: pointer.y });
-            rightPointCounter++;
-          }
-          else if (this.drawingLeft) {
-            var e = opt.e;
-            const pointer = canvas.getPointer(opt.e);    
-            left_line.set({ x2: pointer.x, y2: pointer.y });
-            leftEnd.set({ left: pointer.x, top: pointer.y, angle: calculateAngle(leftStart.left, leftStart.top, pointer.x, pointer.y)+90 });
-            canvas.renderAll();
-            // save heading values
-            var start = leftKeyPoints[0];
-            leftKeyPoints = [];
-            leftKeyPoints.push(start);
-            leftKeyPoints.push({ x: pointer.x, y: pointer.y });
-            leftPointCounter++;
-          }
         });
         canvas.on('mouse:up', function(opt) {
             // on mouse up we want to recalculate new interaction
@@ -331,13 +355,30 @@
             this.isDragging = false;
             this.selection = true;
             this.drawingHeading = false;
-            this.drawingRight = false;
-            this.drawingLeft = false;
+            isDrawingLeftEye = false;
+            isDrawingRightEye = false;
         });
         canvas.on('mouse:leave', function(opt) {
             this.drawingHeading = false;
-            this.drawingRight = false;
-            this.drawingLeft = false;
+            isDrawingLeftEye = false;
+            isDrawingRightEye = false;
+        });
+
+        canvas.on('object:modified', function(event) {
+        var activeObject = event.target;
+        if (activeObject && activeObject.type === 'group') {
+            var center = activeObject.getCenterPoint();
+            var angle = activeObject.angle || 0;
+
+            if (activeObject.id==="LeftEye") {
+                console.log("Left Center Coordinates after rotation: X =", center.x, ", Y =", center.y);
+                console.log("Updated Rotation Angle of Left Eye (degrees):", getNormalizedMajorAxisAngle(activeObject));
+            }
+            else if (activeObject.id==="RightEye") {
+                console.log("Right Center Coordinates after rotation: X =", center.x, ", Y =", center.y);
+                console.log("Updated Rotation Angle of Right Eye (degrees):", getNormalizedMajorAxisAngle(activeObject));
+            }   
+        }
         });
 
         // handle general keyboard events
@@ -349,12 +390,10 @@
                     }
                 });
                 // clear keypoints
-                leftKeyPoints = [];
-                rightKeyPoints = [];
                 headingKeyPoints = [];
-                leftPointCounter = 0;
-                rightPointCounter = 0;
                 headingCounter = 0;
+                left_drawn = false;
+                right_drawn = false;
                 // re-render the canvas
                 canvas.renderAll();
             }
@@ -376,6 +415,85 @@
         window.addEventListener('keydown', handleKeyPress);
         window.addEventListener('keyup', handleKeyUp);
 
+        /////////////////////////////////////////// HELPER FUNCTIONS ///////////////////////////////////////////
+
+        // Helper function to create the directional ellipse (ellipse + crosshair + arrow)
+        function createDirectionalEllipse(rx, ry, left, top, color, obj_id, angle = 0) {
+            // Create the ellipse
+            var ellipse = new fabric.Ellipse({
+                left: left,
+                top: top,
+                rx: rx,
+                ry: ry,
+                fill: 'rgba(0, 0, 0, 0)',
+                stroke: 'rgba(0, 0, 0, 0)',
+                strokeWidth: 1.5,
+                selectable: false
+            });
+
+            // Crosshair lines
+            var majorAxisLine = new fabric.Line([left, top-ry, left, top+ry], {
+                stroke: color,
+                strokeWidth: 1.5,
+                selectable: false,
+                evented: false
+            });
+            var minorAxisLine = new fabric.Line([left-rx, top, left+rx, top], {
+                stroke: color,
+                strokeWidth: 1.5,
+                selectable: false,
+                evented: false
+            });
+
+            // Arrow on the major axis
+            var arrow = new fabric.Triangle({
+                width: 6,
+                height: 14,
+                fill: color,
+                left: rx,
+                top: 0,
+                originX: 'center',
+                originY: 'center',
+                angle: 90,
+                selectable: false,
+                evented: false
+            });
+
+            // Create a group with the ellipse, crosshair, and arrow
+            var group = new fabric.Group([ellipse, majorAxisLine, minorAxisLine, arrow], {
+                cornerSize: 6,     // Set the size of the corner control boxes
+                cornerColor: 'blue', // Optional: Change the color of the control boxes
+                cornerStyle: 'circle',
+                left: left,
+                top: top,
+                angle: angle,
+                originX: 'center',
+                originY: 'center',
+                id: obj_id
+            });
+
+            // Adjust the bounding box to fit the ellipse tightly
+            group._calcBounds = function() {
+                // Set the bounds to match the ellipse dimensions (ignoring other elements)
+                const xMin = left - rx;
+                const xMax = left + rx;
+                const yMin = top - ry;
+                const yMax = top + ry;
+                
+                // Manually set bounding box coordinates
+                group.width = xMax - xMin;
+                group.height = yMax - yMin;
+                group.left = xMin;
+                group.top = yMin;
+                
+                group.setCoords();  // Update the coordinates
+            };
+
+            group._calcBounds(); // Trigger bounding box adjustment
+
+            return group;
+        }
+
         // helper function to compute angle
         function calculateAngle(x1, y1, x2, y2) {
             // Calculate the difference between points
@@ -391,13 +509,32 @@
             return angleDegrees; // You can return either radians or degrees
         }
 
+        function getNormalizedMajorAxisAngle(ellipse) {
+            // Get the rotation angle of the ellipse
+            var angle = ellipse.angle || 0;  // Ellipse rotation angle (in degrees)
+
+            // hard code major axis to be the x axis
+            angle = angle % 360;
+
+            // Ensure the angle is within the range 0 to 360 degrees
+            if (angle > 0) {
+                angle -= 360;
+            }
+
+            return -1 * angle;
+        }
+
         // Save annotation
         document.getElementById('saveButton').addEventListener('click', function() {
-            tosave = ((leftKeyPoints.length == 2) && (rightKeyPoints.length == 2) && (headingKeyPoints.length == 2))
+            tosave = ((left_drawn) && (right_drawn) && (headingKeyPoints.length == 2))
             if (tosave==true) {
                 const annotation = {
-                    left_points: leftKeyPoints,
-                    right_points: rightKeyPoints,
+                    left_eye_angle: getNormalizedMajorAxisAngle(LeftEye),
+                    right_eye_angle: getNormalizedMajorAxisAngle(RightEye),
+                    left_eye_x_position: LeftEye.getCenterPoint().x,
+                    left_eye_y_position: LeftEye.getCenterPoint().y,
+                    right_eye_x_position: RightEye.getCenterPoint().x,
+                    right_eye_y_position: RightEye.getCenterPoint().y,
                     heading_points: headingKeyPoints,
                     canvasHeight: canvas.getHeight(),
                     canvasWidth: canvas.getWidth(),
@@ -412,15 +549,17 @@
                 })
                 .then(response => response.json())
                 .then(data => {
-                    // alert(data.message);
-                    leftKeyPoints = [];
-                    rightKeyPoints = [];
                     headingKeyPoints = [];
-                    leftPointCounter = 0;
-                    rightPointCounter = 0;
+                    left_drawn = false;
+                    right_drawn = false;
                     headingCounter = 0;
                     canvas.clear();
+                    console.log("cleared canvas");
+                    canvas.setZoom(1);
+                    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+                    console.log("reset the viewport and zoom");
                     loadImageToCanvas(data.image_path);
+                    console.log("loaded a new image");
                 })
                 .catch((error) => {
                     console.error('Error:', error);
@@ -430,112 +569,43 @@
             }
         });
 
-        document.getElementById('leftMissing').addEventListener('click', function() {
-            tosave = ((rightKeyPoints.length == 2) && (headingKeyPoints.length == 2))
-            if (tosave==true) {
-                const annotation = {
-                    left_points: [],
-                    right_points: rightKeyPoints,
-                    heading_points: headingKeyPoints
-                };
-
-                fetch('/save_annotation', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(annotation),
-                })
-                .then(response => response.json())
-                .then(data => {
-                    alert(data.message);
-                    leftKeyPoints = [];
-                    rightKeyPoints = [];
-                    headingKeyPoints = [];
-                    leftPointCounter = 0;
-                    rightPointCounter = 0;
-                    headingCounter = 0;
-                    canvas.clear();
-                    loadImageToCanvas(data.image_path);
-                })
-                .catch((error) => {
-                    console.error('Error:', error);
-                });
-            } else {
-                alert('Left eye missing, still need to label right and heading.');
-            }
-        });
-
-        document.getElementById('rightMissing').addEventListener('click', function() {
-            tosave = ((leftKeyPoints.length == 2) && (headingKeyPoints.length == 2))
-            if (tosave==true) {
-                const annotation = {
-                    left_points: leftKeyPoints,
-                    right_points: [],
-                    heading_points: headingKeyPoints
-                };
-
-                fetch('/save_annotation', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(annotation),
-                })
-                .then(response => response.json())
-                .then(data => {
-                    alert(data.message);
-                    leftKeyPoints = [];
-                    rightKeyPoints = [];
-                    headingKeyPoints = [];
-                    leftPointCounter = 0;
-                    rightPointCounter = 0;
-                    headingCounter = 0;
-                    canvas.clear();
-                    loadImageToCanvas(data.image_path);
-                })
-                .catch((error) => {
-                    console.error('Error:', error);
-                });
-            } else {
-                alert('Right eye is missing. Still need to label left and heading');
-            }
-        });
-
         document.getElementById('bothMissing').addEventListener('click', function() {
-            tosave = ((leftKeyPoints.length == 0) && (rightKeyPoints.length == 0) && (headingKeyPoints.length == 0))
-            if (tosave==true) {
-                const annotation = {
-                    left_points: [],
-                    right_points: [],
-                    heading_points: []
-                };
+            const annotation = {
+                left_eye_angle: undefined,
+                right_eye_angle: undefined,
+                left_eye_x_position: undefined,
+                left_eye_y_position: undefined,
+                right_eye_x_position: undefined,
+                right_eye_y_position: undefined,
+                heading_points: undefined,
+                canvasHeight: undefined,
+                canvasWidth: undefined,
+            };
 
-                fetch('/save_annotation', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(annotation),
-                })
-                .then(response => response.json())
-                .then(data => {
-                    alert(data.message);
-                    leftKeyPoints = [];
-                    rightKeyPoints = [];
-                    headingKeyPoints = [];
-                    leftPointCounter = 0;
-                    rightPointCounter = 0;
-                    headingCounter = 0;
-                    canvas.clear();
-                    loadImageToCanvas(data.image_path);
-                })
-                .catch((error) => {
-                    console.error('Error:', error);
-                });
-            } else {
-                alert('Nothing should be labeled. We have no information about the fish in this image.');
-            }
+            fetch('/save_annotation', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(annotation),
+            })
+            .then(response => response.json())
+            .then(data => { 
+                headingKeyPoints = [];
+                left_drawn = false;
+                right_drawn = false;
+                headingCounter = 0;
+                canvas.clear();
+                console.log("cleared canvas");
+                canvas.setZoom(1);
+                canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+                console.log("reset the viewport and zoom");
+                loadImageToCanvas(data.image_path);
+                console.log("loaded a new image");
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+            });
         });
 
         function loadImageToCanvas(imageUrl) {
@@ -545,6 +615,12 @@
             canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
         });
         }
+
+
+        window.addEventListener('beforeunload', function (event) {
+            navigator.sendBeacon('/window_closed'); // Sends an asynchronous request to the Flask server
+        });
+
     </script>
 </body>
 </html>

@@ -1,0 +1,13 @@
+# for training / creating the model
+train_model.py (script to load a model architecture and train)
+track_eyes.py (short script to run inference)
+CNN.py (data loader and model architecture)
+EyeTracker.py (eye tracker class which loads a train model and has a "track" method)
+
+
+# For annotation stuff
+settings.py
+app.py (need to fix path things and use session variable again, that got deleted)
+datasets.py 
+paths.py
+qc_training.py (fix_training.py)
