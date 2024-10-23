@@ -62,7 +62,6 @@ def package_annotations(data, img_path, msg=""):
     """
     New function 22.10.24 to handle new annotations -- which are ellipses for the eyes instead of keypoints
     """
-    print(data)
     # convert back to raw image pixels (since we upsample for the Fabric.js canvas)
     img = np.array(Image.open(img_path))
     conversion_factor_x = img.shape[0] / data["canvasWidth"]

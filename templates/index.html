@@ -152,7 +152,7 @@
                 origY_right = options.pointer.y;
 
                 // Initialize with small values; we will dynamically update on mouse move
-                RightEye = createDirectionalEllipse(0, 0, origX_left, origY_left, "blue", "RightEye");
+                RightEye = createDirectionalEllipse(0, 0, origX_left, origY_left, "cyan", "RightEye");
                 canvas.add(RightEye);
             }
             // heading annotation
@@ -448,7 +448,7 @@
             // Arrow on the major axis
             var arrow = new fabric.Triangle({
                 width: 6,
-                height: 14,
+                height: 6,
                 fill: color,
                 left: rx,
                 top: 0,
