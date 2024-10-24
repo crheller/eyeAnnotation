@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Annotation</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.2.4/fabric.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -76,6 +77,9 @@
             <button id="bothMissing">Bad Frame</button>
             <button id="saveButton">Save Annotation</button>
         </div>
+        <div id="plot">
+
+        </div>
     </div>
 
     <script>
@@ -90,6 +94,18 @@
             ctx_demo.drawImage(backgroundImage, 0, 0, demo.width, demo.height);
         };
 
+        function plot_distribution(distro_json) {
+            console.log(distro_json);
+            var distro_json = {{ distro_json | tojson | safe }};
+            var figure = JSON.parse(distro_json);
+            Plotly.purge('plot'); 
+            Plotly.newPlot('plot', figure.data, figure.layout);
+        };
+
+        function update_distribution(distro_json) {
+            var figure = JSON.parse(distro_json);
+            Plotly.react('plot', figure.data, figure.layout);
+        }
 
         // Create Fabric.js canvas
         const canvas = new fabric.Canvas('canvas');
@@ -97,13 +113,14 @@
 
         // Load image onto the canvas
         function draw_bg_image(image_path) {
-            fabric.Image.fromURL('{{ image_path }}', function(img) {
+            fabric.Image.fromURL(image_path, function(img) {
             img.scaleToWidth(400);
             canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
         });
         };
         console.log('{{ image_path }}');
         draw_bg_image('{{ image_path }}');
+        plot_distribution('{{ distro_json }}');
 
         let headingKeyPoints = [];
         let headingCounter = 0;
@@ -558,6 +575,7 @@
                     canvas.setZoom(1);
                     canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
                     console.log("reset the viewport and zoom");
+                    update_distribution(data.distro_json);
                     loadImageToCanvas(data.image_path);
                     console.log("loaded a new image");
                 })

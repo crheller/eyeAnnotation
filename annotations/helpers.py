@@ -3,6 +3,12 @@ sys.path.append("/home/charlie/code/eyeAnnotation")
 import math
 import numpy as np
 from PIL import Image
+import plotly.express as px
+import plotly.io as pio
+import pandas as pd
+import os
+import json
+from settings import IMG_DIR, ANNOT_DIR
 
 def is_right_of_line(line_start, line_end, point):
     """
@@ -102,3 +108,43 @@ def package_annotations(data, img_path, msg=""):
     }
 
     return data
+
+
+def get_training_annotations():
+    labeled = os.listdir(IMG_DIR)
+    left_angles = np.zeros(len(labeled))
+    right_angles = np.zeros(len(labeled))
+    heading_angles = np.zeros(len(labeled))
+    for i, fname in enumerate(labeled):
+        fname = fname.strip(".png")
+        img = np.array(Image.open(os.path.join(IMG_DIR, f"{fname}.png")))
+        with open(os.path.join(ANNOT_DIR, f"{fname}.json"), "r") as f:
+            annot = json.load(f)[0]
+
+        left_angles[i] = annot["left_eye_angle"]
+        right_angles[i] = annot["right_eye_angle"]
+        heading_angles[i] = annot["heading_angle"]
+    return {"left_eye_angle": left_angles, "right_eye_angle": right_angles, "heading": heading_angles}
+
+
+# ============================= helper plotting functions ==================================
+def plot_training_distribution():
+    data = get_training_annotations()
+    df = pd.DataFrame(data).melt()
+    df.columns = ["Variable", "Angle"]
+    n = len(os.listdir(IMG_DIR))
+    fig = px.histogram(df, 
+                   x='Angle', 
+                   color='Variable', 
+                   nbins=20, 
+                   title=f"Distribution of labeled training data, {n} labeled frames",
+                   barmode='overlay', 
+                   opacity=0.7,
+                   color_discrete_sequence=['orange', 'blue', 'green'])  # Add rug plot marginal
+    fig.update_traces(xbins=dict( # bins used for histogram
+        start=-math.pi,
+        end=math.pi+0.1,
+        size=0.1
+    ))
+    graph_json = pio.to_json(fig)
+    return graph_json

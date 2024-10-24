@@ -4,7 +4,7 @@ from flask import Flask, render_template, request, jsonify, url_for, session
 import json
 import os
 from loader.data_loader import load_new_image
-from annotations.helpers import package_annotations, check_valid_labels
+from annotations.helpers import package_annotations, check_valid_labels, plot_training_distribution
 import subprocess
 from settings import IMG_DIR, ANNOT_DIR
 import datetime
@@ -25,9 +25,10 @@ def index():
     now = datetime.datetime.now()
     uid = now.strftime('%y%m%d_%H%M%S')
     img_tmp, img_path = load_image(uid)
+    distro_json = plot_training_distribution()
     session["IMG_TMP_PATH"] = img_tmp
     session["IMG_PATH"] = img_path
-    return render_template('index.html', image_path=url_for('static', filename=session["IMG_PATH"]), demo_path=url_for('static', filename="eye_example.png"))
+    return render_template('index.html', image_path=url_for('static', filename=session["IMG_PATH"]), distro_json=distro_json, demo_path=url_for('static', filename="eye_example.png"))
 
 
 @app.route('/save_annotation', methods=['POST'])
@@ -89,9 +90,10 @@ def save_annotation():
 
     # somehow pass this with jsonify back to the html so that the html callback can dynamically reserve the (new) image
     # but also need to keep track of this filename so that we know how to save the annotations...
+    distro_json = plot_training_distribution()
     path = url_for('static', filename=f"{img_path}")
     
-    return jsonify({"image_path": f"{path}"})
+    return jsonify({"image_path": f"{path}", "distro_json": distro_json})
 
 @app.route('/window_closed', methods=['POST'])
 def window_closed():
