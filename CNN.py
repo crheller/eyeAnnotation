@@ -229,6 +229,60 @@ class EyeAngleDataset(Dataset):
         if self.transform:
             image = self.transform(image)
         if self.scale_output is not None:
-            labels *= self.scale_output
+            labels = ((labels - self.scale_output[0]) / self.scale_output[1]).astype(np.float32)
+            # labels *= self.scale_output
                    
         return image, labels
+    
+
+# augmentation utilities
+class AddGaussianNoise(object):
+    def __init__(self, mean=0.0, std=0.1):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, tensor):
+        # Generate noise and add it to the tensor
+        noise = torch.randn(tensor.size()) * self.std + self.mean
+        return tensor + noise
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(mean={self.mean}, std={self.std})"
+    
+
+# =============================== Utilities ===================================
+def get_mu_sigma_images(dir, transform):
+    imgs = os.listdir(dir)
+    img = transform(Image.open(os.path.join(dir, imgs[0])).convert("L"))
+    all_img = np.zeros((len(imgs), img.shape[0], img.shape[1]))
+    for i, img in enumerate(imgs):
+        all_img[i, :, :] = transform(Image.open(os.path.join(dir, img)).convert("L")).mean()
+    mu = all_img.mean()
+    sigma = all_img.std()
+    return mu, sigma
+
+def get_mu_sigma_outputs(dir, keys=None):
+    if keys is None:
+        keys = [
+            "left_eye_x_position",
+            "left_eye_y_position",
+            "right_eye_x_position",
+            "right_eye_y_position",
+            "yolk_x_position",
+            "yolk_y_position",
+            "left_eye_angle",
+            "right_eye_angle",
+            "heading_angle"
+            ]
+        
+    ff = os.listdir(dir)
+    for i, fname in enumerate(ff):
+        with open(os.path.join(dir, fname), "r") as f:
+            _annotations = json.load(f)[0]
+            if i == 0:
+                all_output = np.zeros((len(ff), len(keys)))
+            for j, k in enumerate(keys):
+                all_output[i, j] = _annotations[k]
+    mu = np.mean(all_output, axis=0)
+    sigma = np.std(all_output, axis=0)
+    return mu, sigma
