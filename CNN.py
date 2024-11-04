@@ -5,6 +5,48 @@ import numpy as np
 import os
 import json
 from PIL import Image
+import math
+from torchvision import models
+
+class ResNet50Regression(nn.Module):
+    def __init__(self, num_outputs=9, pretrained=True, freeze_backbone=False):
+        """
+        Initializes the ResNet50 model for regression with a custom output layer.
+
+        Args:
+            num_outputs (int): The number of regression output variables.
+            pretrained (bool): Whether to load pre-trained weights for ResNet50.
+        """
+        super(ResNet50Regression, self).__init__()
+        
+        # Load the pretrained ResNet50 model
+        self.resnet = models.resnet50(pretrained=pretrained)
+        
+        # Remove the final fully connected layer
+        # Replace with a new fully connected layer to output the desired number of regression values
+        in_features = self.resnet.fc.in_features
+        self.resnet.fc = nn.Linear(in_features, num_outputs)
+
+        # Freeze the backbone if specified
+        if freeze_backbone:
+            for param in self.resnet.parameters():
+                param.requires_grad = False
+
+            # Unfreeze the last fully connected layer for training
+            for param in self.resnet.fc.parameters():
+                param.requires_grad = True
+        
+    def forward(self, x):
+        """
+        Forward pass of the model.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, 3, H, W)
+
+        Returns:
+            torch.Tensor: Output tensor of shape (batch_size, num_outputs)
+        """
+        return self.resnet(x)
 
 class CustomCNN(nn.Module):
     def __init__(self, dropout_rate=0.2):
@@ -183,10 +225,72 @@ class DeepCNN(nn.Module):
         x = self.output(x)
         return x
     
+class ShallowCNN(nn.Module):
+    def __init__(self, dropout_rate=0.2):
+        super(ShallowCNN, self).__init__()
+    
+        # Initial convolution layer
+        self.input_block = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, padding=1),  # Input size: 60x60
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.Dropout2d(dropout_rate)
+        )
+        
+        # First stage - reduce to 30x30
+        self.stage1 = nn.Sequential(
+            ResidualBlock(32, 64, stride=2),  # First spatial reduction
+            ResidualBlock(64, 64),
+            nn.Dropout2d(dropout_rate)
+        )  # Now 30x30
+        
+        # Second stage - reduce to 15x15
+        self.stage2 = nn.Sequential(
+            ResidualBlock(64, 128, stride=2),  # Second spatial reduction
+            ResidualBlock(128, 128),
+            nn.Dropout2d(dropout_rate)
+        )  # Now 15x15
+        
+        # Global Average Pooling
+        self.gap = nn.AdaptiveAvgPool2d((1, 1))  # 
+        
+        # Fully connected layers with skip connections
+        self.fc1 = nn.Linear(128, 64)
+        self.fc1_skip = nn.Linear(128, 64)
+        
+        # Output layer
+        self.output = nn.Linear(64, 9)
+        
+        self.dropout = nn.Dropout(dropout_rate)
+        self.relu = nn.ReLU()
+        
+    def forward(self, x):
+        # Convolutional stages
+        x = self.input_block(x)
+        x = self.stage1(x)
+        x = self.stage2(x)
+        
+        # Global Average Pooling
+        x = self.gap(x)
+        x = x.view(x.size(0), -1)
+        
+        # Fully connected layers with skip connections
+        identity = x
+        x = self.fc1(x)
+        x = x + self.fc1_skip(identity)
+        x = self.relu(x)
+        x = self.dropout(x)
+        
+        x = self.output(x)
+        return x
+    
+
+
+
 
 # ================================= DATA LOADER ===================================
 class EyeAngleDataset(Dataset):
-    def __init__(self, image_dir, label_dir, transform=None, scale_output=None):
+    def __init__(self, image_dir, label_dir, transform=None, augment=None, scale_output=None):
         """
         Args:
             image_dir (string): Directory with all the images
@@ -197,6 +301,7 @@ class EyeAngleDataset(Dataset):
         self.image_dir = image_dir
         self.label_dir = label_dir 
         self.transform = transform
+        self.augment = augment
         self.scale_output = scale_output
         self.labels = os.listdir(label_dir)
         
@@ -226,6 +331,8 @@ class EyeAngleDataset(Dataset):
             _annotations["heading_angle"]
         ]).astype(np.float32)
         
+        if self.augment:
+            image, labels = self.augment(image, labels)
         if self.transform:
             image = self.transform(image)
         if self.scale_output is not None:
@@ -249,6 +356,62 @@ class AddGaussianNoise(object):
     def __repr__(self):
         return f"{self.__class__.__name__}(mean={self.mean}, std={self.std})"
     
+
+class RotateScaleTransform:
+    def __init__(self, angle_range=(-30, 30), scale_range=(0.8, 1.2)):
+        self.angle_range = angle_range
+        self.scale_range = scale_range
+
+    def __call__(self, image, labels):
+        # Convert keypoints to numpy array if needed
+        labels = np.array(labels)
+
+        # 1. Randomly sample rotation angle and scale factor
+        rotation_angle = np.random.uniform(*self.angle_range)
+        scale_factor = np.random.uniform(*self.scale_range)
+
+        # 2. Apply transformations to the image
+        # Rotate and scale the image
+        width, height = image.size
+        image = image.rotate(rotation_angle, resample=Image.BILINEAR)
+        image = image.resize((int(width * scale_factor), int(height * scale_factor)), resample=Image.BILINEAR)
+
+        # 3. Adjust keypoints based on rotation and scaling
+        # Rotation matrix
+        rotation_rad = math.radians(rotation_angle)
+        cos_theta = math.cos(rotation_rad)
+        sin_theta = -math.sin(rotation_rad)
+
+        # Center of the image (for rotation)
+        cx, cy = width / 2, height / 2
+
+        # Apply rotation and scaling to each keypoint
+        new_keypoints = []
+        keypoints = [(x, y) for x, y in zip(labels[0:6:2], labels[1:6:2])]
+        for (x, y) in keypoints:
+            # Translate to origin for rotation
+            x -= cx
+            y -= cy
+
+            # Rotate point
+            x_new = x * cos_theta - y * sin_theta
+            y_new = x * sin_theta + y * cos_theta
+
+            # Scale point
+            x_new *= scale_factor
+            y_new *= scale_factor
+
+            # Translate back to original center and add to list
+            new_keypoints.append((x_new + cx, y_new + cy))
+        new_keypoints = np.array(new_keypoints).flatten()
+
+        # 4. Update the angle (if relevant)
+        # Add rotation angle to original angle
+        new_heading = labels[-1] - rotation_rad
+        new_labels = new_keypoints.tolist() + labels[6:8].tolist() + [new_heading]
+
+        return image, np.array(new_labels).astype(np.float32)
+
 
 # =============================== Utilities ===================================
 def get_mu_sigma_images(dir, transform):

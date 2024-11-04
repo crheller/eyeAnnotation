@@ -39,6 +39,7 @@ def make_egocentric(pyimg, ds, frame_idx, n_frames, rotate=False):
     ypos = bf["fish_anchor_y"][save_idx[frame_idx]] - bf["offset_y"][save_idx[frame_idx]]
 
     if rotate:
+        raise NotImplementedError("need to re-implement rotation for edge cases")
         rdeg = np.rad2deg(heading)
         _img = pyimg[ypos-50:ypos+50, xpos-50:xpos+50]
         newimg = rotate(_img, rdeg)
@@ -50,7 +51,24 @@ def make_egocentric(pyimg, ds, frame_idx, n_frames, rotate=False):
     else:
         mmx = int(IMG_X_DIM / 2)
         mmy = int(IMG_Y_DIM / 2)
-        final_img = pyimg[ypos-mmy:ypos+mmy, xpos-mmx:xpos+mmx]
+
+        xstart, newxstart = xpos-mmx, 0
+        xend, newxend = xpos+mmx, IMG_X_DIM
+        ystart, newystart = ypos-mmy, 0
+        yend, newyend = ypos+mmy, IMG_Y_DIM
+        final_img = np.zeros((IMG_Y_DIM, IMG_X_DIM))
+        if (xpos-mmx)<0:
+            xstart = 0
+            newxend = -1*(xpos-mmx)
+        elif (ypos-mmy)<0:
+            ystart = 0
+            newyend = -1*(ypos-mmx)
+        elif (xpos+mmx)>pyimg.shape[1]:
+            newxstart = (xpos+mmx) - IMG_X_DIM
+        elif (ypos+mmy)>pyimg.shape[0]:
+            newystart = (ypos+mmy) - IMG_Y_DIM
+
+        final_img[newystart:newyend, newxstart:newxend] = pyimg[ystart:yend, xstart:xend]
 
     return final_img
 

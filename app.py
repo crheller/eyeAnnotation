@@ -26,8 +26,10 @@ def index():
     uid = now.strftime('%y%m%d_%H%M%S')
     img_tmp, img_path = load_image(uid)
     distro_json = plot_training_distribution()
+    print(session)
     session["IMG_TMP_PATH"] = img_tmp
     session["IMG_PATH"] = img_path
+    print(session)
     return render_template('index.html', image_path=url_for('static', filename=session["IMG_PATH"]), distro_json=distro_json, demo_path=url_for('static', filename="eye_example.png"))
 
 
