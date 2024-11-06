@@ -6,10 +6,11 @@ import os
 import json
 from PIL import Image
 import math
-from torchvision import models
+from torchvision import models, transforms
+from settings import IMG_X_DIM, IMG_Y_DIM
 
 class ResNet50Regression(nn.Module):
-    def __init__(self, num_outputs=9, pretrained=True, freeze_backbone=False):
+    def __init__(self, num_outputs=9, dropout_rate=0.1, pretrained=True, freeze_backbone=False):
         """
         Initializes the ResNet50 model for regression with a custom output layer.
 
@@ -26,6 +27,7 @@ class ResNet50Regression(nn.Module):
         # Replace with a new fully connected layer to output the desired number of regression values
         in_features = self.resnet.fc.in_features
         self.resnet.fc = nn.Linear(in_features, num_outputs)
+        self.dropout = nn.Dropout(dropout_rate)
 
         # Freeze the backbone if specified
         if freeze_backbone:
@@ -255,11 +257,11 @@ class ShallowCNN(nn.Module):
         self.gap = nn.AdaptiveAvgPool2d((1, 1))  # 
         
         # Fully connected layers with skip connections
-        self.fc1 = nn.Linear(128, 64)
-        self.fc1_skip = nn.Linear(128, 64)
+        self.fc1 = nn.Linear(128, 32)
+        self.fc1_skip = nn.Linear(128, 32)
         
         # Output layer
-        self.output = nn.Linear(64, 9)
+        self.output = nn.Linear(32, 9)
         
         self.dropout = nn.Dropout(dropout_rate)
         self.relu = nn.ReLU()
@@ -299,9 +301,9 @@ class EyeAngleDataset(Dataset):
             scale_output: np array of length n_outputs that scales each accordingly
         """
         self.image_dir = image_dir
-        self.label_dir = label_dir 
+        self.label_dir = label_dir
+        self.augment = augment 
         self.transform = transform
-        self.augment = augment
         self.scale_output = scale_output
         self.labels = os.listdir(label_dir)
         
@@ -334,7 +336,7 @@ class EyeAngleDataset(Dataset):
         if self.augment:
             image, labels = self.augment(image, labels)
         if self.transform:
-            image = self.transform(image)
+            image = self.transform(image, labels)
         if self.scale_output is not None:
             labels = ((labels - self.scale_output[0]) / self.scale_output[1]).astype(np.float32)
             # labels *= self.scale_output
@@ -357,60 +359,214 @@ class AddGaussianNoise(object):
         return f"{self.__class__.__name__}(mean={self.mean}, std={self.std})"
     
 
-class RotateScaleTransform:
-    def __init__(self, angle_range=(-30, 30), scale_range=(0.8, 1.2)):
+class RotateTransform:
+    def __init__(self, angle_range=(-30, 30)):
         self.angle_range = angle_range
-        self.scale_range = scale_range
 
     def __call__(self, image, labels):
         # Convert keypoints to numpy array if needed
+        # assumption is that keypoints are in units of fraction width/height
         labels = np.array(labels)
 
-        # 1. Randomly sample rotation angle and scale factor
+        # 1. Randomly sample rotation angle
         rotation_angle = np.random.uniform(*self.angle_range)
-        scale_factor = np.random.uniform(*self.scale_range)
 
         # 2. Apply transformations to the image
         # Rotate and scale the image
-        width, height = image.size
         image = image.rotate(rotation_angle, resample=Image.BILINEAR)
-        image = image.resize((int(width * scale_factor), int(height * scale_factor)), resample=Image.BILINEAR)
-
+        
         # 3. Adjust keypoints based on rotation and scaling
         # Rotation matrix
         rotation_rad = math.radians(rotation_angle)
         cos_theta = math.cos(rotation_rad)
         sin_theta = -math.sin(rotation_rad)
 
-        # Center of the image (for rotation)
-        cx, cy = width / 2, height / 2
-
         # Apply rotation and scaling to each keypoint
         new_keypoints = []
         keypoints = [(x, y) for x, y in zip(labels[0:6:2], labels[1:6:2])]
         for (x, y) in keypoints:
-            # Translate to origin for rotation
-            x -= cx
-            y -= cy
+            # Translate to center for rotation
+            x -= 0.5
+            y -= 0.5
 
-            # Rotate point
+            # Rotate the scaled / centered point
             x_new = x * cos_theta - y * sin_theta
             y_new = x * sin_theta + y * cos_theta
 
-            # Scale point
-            x_new *= scale_factor
-            y_new *= scale_factor
+            # Translate back to their location
+            x_new += 0.5
+            y_new += 0.5
 
-            # Translate back to original center and add to list
-            new_keypoints.append((x_new + cx, y_new + cy))
+            new_keypoints.append((x_new, y_new))
+
+        # Flatten keypoints back to 1D array
         new_keypoints = np.array(new_keypoints).flatten()
 
         # 4. Update the angle (if relevant)
         # Add rotation angle to original angle
         new_heading = labels[-1] - rotation_rad
-        new_labels = new_keypoints.tolist() + labels[6:8].tolist() + [new_heading]
+        new_labels = np.array(new_keypoints.tolist() + labels[6:8].tolist() + [new_heading]).astype(np.float32)
 
-        return image, np.array(new_labels).astype(np.float32)
+        return image, new_labels
+
+
+# ===============================================================================================================================   
+# Custom transform/Loader pipeline for ResNet
+
+class EyeAngleDatasetResNet(Dataset):
+    def __init__(self, image_dir, label_dir, transform=None, scale_output=None):
+        """
+        Args:
+            image_dir (string): Directory with all the images
+            label_file (string): Path to the json file with annotations
+            transform (callable, optional): Optional transform to be applied on a sample
+            scale_output: np array of length n_outputs that scales each accordingly
+        """
+        self.image_dir = image_dir
+        self.label_dir = label_dir
+        self.transform = transform
+        self.scale_output = scale_output
+        self.labels = os.listdir(label_dir)
+        
+    def __len__(self):
+        return len(self.labels)
+    
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+            
+        fname = self.labels[idx].strip(".json")
+        img_name = os.path.join(self.image_dir, f"{fname}.png")
+        # Load image (assuming grayscale)
+        image = Image.open(img_name).convert("L")
+        with open(os.path.join(self.label_dir, f"{fname}.json"), "r") as f:
+            _annotations = json.load(f)[0]
+
+        labels = np.array([
+            _annotations["left_eye_x_position"],
+            _annotations["left_eye_y_position"],
+            _annotations["right_eye_x_position"],
+            _annotations["right_eye_y_position"],
+            _annotations["yolk_x_position"],
+            _annotations["yolk_y_position"],
+            _annotations["left_eye_angle"],
+            _annotations["right_eye_angle"],
+            _annotations["heading_angle"]
+        ]).astype(np.float32)
+
+        if self.transform:
+            image, labels = self.transform(image, labels)
+        if self.scale_output is not None:
+            labels = ((labels - self.scale_output[0]) / self.scale_output[1]).astype(np.float32)
+            # labels *= self.scale_output
+                   
+        return image, labels
+
+
+class ResizeWithTargetTransform:
+    def __init__(self, target_size=(224, 224)):
+        self.target_size = target_size
+        self.resize_transform = transforms.Resize(self.target_size)
+    
+    def __call__(self, image, keypoints):
+
+        # Resize image
+        image = self.resize_transform(image)
+
+        return image, keypoints
+
+class ImageOnlyTransform:
+    """Wrapper to apply an image-only transform in a pipeline where labels or keypoints are also present."""
+    def __init__(self, transform):
+        self.transform = transform
+
+    def __call__(self, image, keypoints):
+        image = self.transform(image)  # Apply the transform only on the image
+        return image, keypoints  # Return the unchanged keypoints
+    
+class RandomFlip:
+    """Randomly flip image along an x/y axes"""
+    def __init__(self, xprob, yprob):
+        self.xprob = xprob
+        self.yprob = yprob
+
+    def __call__(self, image, labels):
+        flipx = np.random.choice(np.arange(0, 1, step=0.01), 1)[0] < self.xprob
+        flipy = np.random.choice(np.arange(0, 1, step=0.01), 1)[0] < self.yprob
+        if flipx:
+            image = image.transpose(Image.FLIP_LEFT_RIGHT)
+            labels[0:6:2] = 1 - labels[0:6:2]
+            labels[8] = math.pi - labels[8]
+            labels[6], labels[7] = labels[7], labels[6]
+        if flipy:
+            image = image.transpose(Image.FLIP_TOP_BOTTOM)
+            labels[1:6:2] = 1 - labels[1:6:2]
+            labels[8] = -labels[8]
+            labels[6], labels[7] = labels[7], labels[6]
+            
+        return image, labels
+    
+class TransformKeypoints:
+    """Wrapper to apply an image-only transform in a pipeline where labels or keypoints are also present."""
+    def __init__(self):
+        self.name = "scale_keypoints"
+    def __call__(self, image, keypoints):
+        keypoints[0:6:2] /= image.size[0]
+        keypoints[1:6:2] /= image.size[1]
+        return image, keypoints  # Return the unchanged keypoints
+
+
+class ResNetTransformPipeline:
+    def __init__(self, u, sd, augment=False):
+        if augment:
+            self.transforms = [
+                TransformKeypoints(),                                                        # transform keypoints to 0 to 1 range
+                # RotateTransform(angle_range=(-5, 5)),                                      # Rotate image and keypoints
+                ImageOnlyTransform(transforms.Grayscale(num_output_channels=3)),             # Convert to 3-channel grayscale
+                ImageOnlyTransform(transforms.Resize((224, 224))),                           # Resize image
+                ImageOnlyTransform(transforms.ToTensor()),                                   # Convert image to tensor
+                ImageOnlyTransform(transforms.Normalize(mean=[u, u, u], std=[sd, sd, sd])),  # Normalize for 3 channels
+                # ImageOnlyTransform(AddGaussianNoise(mean=0.0, std=0.05))
+            ]
+        else:
+            self.transforms = [
+                TransformKeypoints(),
+                ImageOnlyTransform(transforms.Grayscale(num_output_channels=3)),             # Convert to 3-channel grayscale
+                ImageOnlyTransform(transforms.Resize((224, 224))),                           # Resize image and scale keypoints
+                ImageOnlyTransform(transforms.ToTensor()),                                   # Convert image to tensor
+                ImageOnlyTransform(transforms.Normalize(mean=[u, u, u], std=[sd, sd, sd])),  # Normalize for 3 channels
+            ]
+    
+    def __call__(self, image, labels):
+        for transform in self.transforms:
+            image, labels = transform(image, labels)
+        return image, torch.tensor(labels, dtype=torch.float32)
+
+
+# same for the small network
+class SmallNetTransformPipeline:
+    def __init__(self, u, sd, augment=False):
+        if augment:
+            self.transforms = [
+                TransformKeypoints(),            
+                # RotateTransform(angle_range=(-15, 15)),                                              # transform keypoints to 0 to 1 range
+                ImageOnlyTransform(transforms.Resize((IMG_X_DIM, IMG_Y_DIM))),                           # Resize image
+                ImageOnlyTransform(transforms.ToTensor()),                                   # Convert image to tensor
+                ImageOnlyTransform(transforms.Normalize(mean=[u], std=[sd])),  # Normalize for 3 channels
+                # ImageOnlyTransform(AddGaussianNoise(mean=0.0, std=0.2))
+            ]
+        else:
+            self.transforms = [
+                TransformKeypoints(),
+                ImageOnlyTransform(transforms.Resize((IMG_X_DIM, IMG_Y_DIM))),                           # Resize image
+                ImageOnlyTransform(transforms.ToTensor()),                                   # Convert image to tensor
+                ImageOnlyTransform(transforms.Normalize(mean=[u], std=[sd])),  # Normalize for 3 channels
+            ]
+    
+    def __call__(self, image, labels):
+        for transform in self.transforms:
+            image, labels = transform(image, labels)
+        return image, torch.tensor(labels, dtype=torch.float32)
 
 
 # =============================== Utilities ===================================

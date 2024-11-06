@@ -6,7 +6,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 import os
 import json
-from CNN import SmallNetTransformPipeline, EyeAngleDatasetResNet, ShallowCNN, DeepCNN, get_mu_sigma_images, get_mu_sigma_outputs
+from CNN import ResNetTransformPipeline, EyeAngleDatasetResNet, ResNet50Regression, get_mu_sigma_images, get_mu_sigma_outputs
 from settings import IMG_DIR, ANNOT_DIR, IMG_VAL_DIR, ANNOT_VAL_DIR, IMG_X_DIM, IMG_Y_DIM
 import matplotlib.pyplot as plt
 import math
@@ -14,6 +14,7 @@ import math
 def train_model(model, train_loader, val_loader, l2_penalty=None, num_epochs=50, device="cuda"):
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=l2_penalty)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5)
 
     model = model.to(device)
     save_loss = np.zeros(num_epochs)
@@ -54,7 +55,7 @@ def train_model(model, train_loader, val_loader, l2_penalty=None, num_epochs=50,
         print(f'Training Loss: {avg_train_loss:.4f}')
         print('--------------------')
         print(f'Val loss: {val_loss}')
-        # scheduler.step(avg_train_loss)
+        scheduler.step(avg_train_loss)
 
     return save_loss, save_val_loss
 
@@ -67,8 +68,8 @@ u_input, sd_input = get_mu_sigma_images(IMG_DIR, transform=tensor_transform)
 scale_output = get_mu_sigma_outputs(ANNOT_DIR)
 
 # build model, define transform, call training function
-transform = SmallNetTransformPipeline(u_input, sd_input, augment=True)
-val_transform = SmallNetTransformPipeline(u_input, sd_input, augment=False)
+transform = ResNetTransformPipeline(u_input, sd_input, augment=True)
+val_transform = ResNetTransformPipeline(u_input, sd_input, augment=False)
 
 # Create datasets
 train_dataset = EyeAngleDatasetResNet(
@@ -85,16 +86,15 @@ validation_dataset = EyeAngleDatasetResNet(
 )
 
 # Create data loaders
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=4)
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4)
 val_loader = DataLoader(validation_dataset, batch_size=32, shuffle=True, num_workers=4)
 
 # Initialize model
-model, PATH = ShallowCNN(dropout_rate=0.3), "SavedModels/ShallowNet.pt" # good parity between training / test, but doesn't get too low (and eventually overfits too)
-model, PATH = DeepCNN(dropout_rate=0.3), "SavedModels/DeepNet.pt" # can get training loss lower, but seems to overfit slightly more
+model = ResNet50Regression(freeze_backbone=False, dropout_rate=0.0)
 
 # Train model
-l2_penalty = 1e-5
-n_epochs = 1000
+l2_penalty = 1e-4
+n_epochs = 100
 loss, val_loss = train_model(model, train_loader, val_loader, l2_penalty=l2_penalty, num_epochs=n_epochs, device="cuda:1")
 
 f, ax = plt.subplots(1, 1, figsize=(5, 5))
@@ -105,12 +105,16 @@ ax.legend()
 ax.set_xlabel("epoch")
 # ax.set_ylim((None, 1))
 
+# save the trained model, load it, run inference
+# Specify a path
+PATH = "SavedModels/ResNet.pt"
+
 # Save
 torch.save(model.state_dict(), PATH)
 
 # Load
 device = "cuda:0"
-loadedmodel = DeepCNN()
+loadedmodel = ResNet50Regression()
 loadedmodel.load_state_dict(torch.load(PATH, weights_only=True))
 loadedmodel.eval()
 loadedmodel.to(device)
@@ -137,7 +141,7 @@ for i in range(0, 16):
     imgcpu = np.array(img.to("cpu"))[0, 0, :, :]
 
     # xsize, ysize = imgcpu.shape
-    pred[0, :6] = pred[0, :6] * 60
+    pred[0, :6] = pred[0, :6] * 224
     lx, ly = pred[0, 0], pred[0, 1]
     rx, ry = pred[0, 2], pred[0, 3]
     yx, yy = pred[0, 4], pred[0, 5]
@@ -145,9 +149,9 @@ for i in range(0, 16):
     right_eye_angle = pred[0, 7] #/ 100
     heading_angle = pred[0, 8] #/ 50
 
-    lex, ley = create_vector(lx, ly, left_eye_angle + heading_angle, 5)
-    rex, rey = create_vector(rx, ry, right_eye_angle + heading_angle, 5)
-    yex, yey = create_vector(yx, yy, heading_angle, 15)
+    lex, ley = create_vector(lx, ly, left_eye_angle + heading_angle, 15)
+    rex, rey = create_vector(rx, ry, right_eye_angle + heading_angle, 15)
+    yex, yey = create_vector(yx, yy, heading_angle, 25)
 
     f, ax = plt.subplots(1, 1, figsize=(5, 5))
 
