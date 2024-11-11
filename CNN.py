@@ -8,6 +8,7 @@ from PIL import Image
 import math
 from torchvision import models, transforms
 from settings import IMG_X_DIM, IMG_Y_DIM
+import torchvision.transforms.functional as TF
 
 class ResNet50Regression(nn.Module):
     def __init__(self, num_outputs=9, dropout_rate=0.1, pretrained=True, freeze_backbone=False):
@@ -141,7 +142,7 @@ class ResidualBlock(nn.Module):
 
 
 class DeepCNN(nn.Module):
-    def __init__(self, dropout_rate=0.2):
+    def __init__(self, dropout_rate=0.2, num_outputs=9):
         super(DeepCNN, self).__init__()
         
         # Initial convolution
@@ -194,7 +195,7 @@ class DeepCNN(nn.Module):
         self.fc2_skip = nn.Linear(512, 256)
         
         # Output layer
-        self.output = nn.Linear(256, 9)
+        self.output = nn.Linear(256, num_outputs)
         
         self.dropout = nn.Dropout(dropout_rate)
         self.relu = nn.ReLU()
@@ -228,7 +229,7 @@ class DeepCNN(nn.Module):
         return x
     
 class ShallowCNN(nn.Module):
-    def __init__(self, dropout_rate=0.2):
+    def __init__(self, dropout_rate=0.2, num_outputs=9):
         super(ShallowCNN, self).__init__()
     
         # Initial convolution layer
@@ -261,7 +262,7 @@ class ShallowCNN(nn.Module):
         self.fc1_skip = nn.Linear(128, 32)
         
         # Output layer
-        self.output = nn.Linear(32, 9)
+        self.output = nn.Linear(32, num_outputs)
         
         self.dropout = nn.Dropout(dropout_rate)
         self.relu = nn.ReLU()
@@ -322,15 +323,15 @@ class EyeAngleDataset(Dataset):
             _annotations = json.load(f)[0]
 
         labels = np.array([
-            _annotations["left_eye_x_position"],
-            _annotations["left_eye_y_position"],
-            _annotations["right_eye_x_position"],
-            _annotations["right_eye_y_position"],
-            _annotations["yolk_x_position"],
-            _annotations["yolk_y_position"],
+            _annotations["left_eye_x_position"] / IMG_X_DIM,
+            _annotations["left_eye_y_position"] / IMG_Y_DIM,
+            _annotations["right_eye_x_position"] / IMG_X_DIM,
+            _annotations["right_eye_y_position"] / IMG_Y_DIM,
+            _annotations["yolk_x_position"] / IMG_X_DIM,
+            _annotations["yolk_y_position"] / IMG_Y_DIM,
             _annotations["left_eye_angle"],
             _annotations["right_eye_angle"],
-            _annotations["heading_angle"]
+            # _annotations["heading_angle"]
         ]).astype(np.float32)
         
         if self.augment:
@@ -338,7 +339,7 @@ class EyeAngleDataset(Dataset):
         if self.transform:
             image = self.transform(image, labels)
         if self.scale_output is not None:
-            labels = ((labels - self.scale_output[0]) / self.scale_output[1]).astype(np.float32)
+            labels = np.float32(((labels - self.scale_output[0]) / self.scale_output[1])) #.astype(np.float32)
             # labels *= self.scale_output
                    
         return image, labels
@@ -443,24 +444,98 @@ class EyeAngleDatasetResNet(Dataset):
             _annotations = json.load(f)[0]
 
         labels = np.array([
-            _annotations["left_eye_x_position"],
-            _annotations["left_eye_y_position"],
-            _annotations["right_eye_x_position"],
-            _annotations["right_eye_y_position"],
-            _annotations["yolk_x_position"],
-            _annotations["yolk_y_position"],
+            _annotations["left_eye_x_position"] / IMG_X_DIM,
+            _annotations["left_eye_y_position"] / IMG_Y_DIM,
+            _annotations["right_eye_x_position"] / IMG_X_DIM,
+            _annotations["right_eye_y_position"] / IMG_Y_DIM,
+            _annotations["yolk_x_position"] / IMG_X_DIM,
+            _annotations["yolk_y_position"] / IMG_Y_DIM,
             _annotations["left_eye_angle"],
             _annotations["right_eye_angle"],
-            _annotations["heading_angle"]
+            # _annotations["heading_angle"]
         ]).astype(np.float32)
 
         if self.transform:
             image, labels = self.transform(image, labels)
         if self.scale_output is not None:
-            labels = ((labels - self.scale_output[0]) / self.scale_output[1]).astype(np.float32)
+            labels = np.float32(((labels - self.scale_output[0]) / self.scale_output[1]))
             # labels *= self.scale_output
                    
         return image, labels
+    
+
+class EyeAngleDatasetKeyPoints(Dataset):
+    def __init__(self, image_dir, label_dir, transform=None, scale_output=None):
+        """
+        Args:
+            image_dir (string): Directory with all the images
+            label_file (string): Path to the json file with annotations
+            transform (callable, optional): Optional transform to be applied on a sample
+            scale_output: np array of length n_outputs that scales each accordingly
+        """
+        self.image_dir = image_dir
+        self.label_dir = label_dir
+        self.transform = transform
+        self.scale_output = scale_output
+        self.labels = os.listdir(label_dir)
+        
+    def __len__(self):
+        return len(self.labels)
+    
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+            
+        fname = self.labels[idx].strip(".json")
+        img_name = os.path.join(self.image_dir, f"{fname}.png")
+        # Load image (assuming grayscale)
+        image = Image.open(img_name).convert("L")
+        with open(os.path.join(self.label_dir, f"{fname}.json"), "r") as f:
+            _annotations = json.load(f)[0]
+
+        lx, ly = _annotations["left_eye_x_position"], _annotations["left_eye_y_position"]
+        rx, ry = _annotations["right_eye_x_position"], _annotations["right_eye_y_position"]
+        yx, yy = _annotations["yolk_x_position"], _annotations["yolk_y_position"]
+        left_angle = _annotations["left_eye_angle"]+_annotations["heading_angle"]
+        right_angle = _annotations["right_eye_angle"]+_annotations["heading_angle"]
+        left_keypoints = self.to_keypoints(lx, ly, left_angle, 4, 1)
+        right_keypoints = self.to_keypoints(rx, ry, right_angle, 4, 1)
+        yolk_keypoints = self.to_keypoints(yx, yy, _annotations["heading_angle"], 20, 5, keepneg=False)
+
+        left_keypoints = np.array(left_keypoints).flatten() / IMG_X_DIM
+        right_keypoints = np.array(right_keypoints).flatten() / IMG_X_DIM
+        yolk_keypoints = np.array(yolk_keypoints).flatten() / IMG_X_DIM
+
+        labels = np.concatenate([left_keypoints, right_keypoints, yolk_keypoints]).astype(np.float32)
+
+        if self.transform:
+            image, labels = self.transform(image, labels)
+        if self.scale_output is not None:
+            labels = np.float32(((labels - self.scale_output[0]) / self.scale_output[1]))
+            # labels *= self.scale_output
+                   
+        return image, labels
+    
+    def to_keypoints(self, x_mid, y_mid, angle_rad, length, nkeypoints, keepneg=True):
+        length_step = length / nkeypoints
+        steps = np.arange(0, length+length_step, length_step)
+
+        p_keypoints = []
+        n_keypoints = []
+        for s in steps:
+            x = x_mid + s * math.cos(angle_rad)
+            y = y_mid + s * math.sin(angle_rad)
+            p_keypoints.append((x, y))
+
+            if s != 0:
+                x = x_mid - s * math.cos(angle_rad)
+                y = y_mid - s * math.sin(angle_rad)
+                n_keypoints.append((x, y))
+        
+        if keepneg:
+            return n_keypoints[::-1] + p_keypoints
+        else:
+            return p_keypoints
 
 
 class ResizeWithTargetTransform:
@@ -474,6 +549,53 @@ class ResizeWithTargetTransform:
         image = self.resize_transform(image)
 
         return image, keypoints
+    
+
+# class RandomAffineTransform:
+#     def __init__(self, max_translation=10, max_rotation=30, max_scale=0.2, max_shear=10):
+#         self.max_translation=max_translation
+#         self.max_rotation = max_rotation
+#         self.max_scale = max_scale
+#         self.max_shear = max_shear
+
+#     def __call__(self, image, labels):
+
+#         # Generate random affine parameters
+#         angle = np.random.uniform(-self.max_rotation, self.max_rotation)
+#         translate = (np.random.uniform(-self.max_translation, self.max_translation),
+#                     np.random.uniform(-self.max_translation, self.max_translation))
+#         scale = 1 + np.random.uniform(0, self.max_scale)
+#         shear = np.random.uniform(-self.max_shear, self.max_shear)
+        
+#         # Apply affine transform to the image
+#         img_height = image.height
+#         image = TF.affine(image, angle=angle, translate=translate, scale=scale, shear=shear)
+        
+#         # Convert angles to radians for transformation math
+#         angle_rad = np.radians(angle)
+#         shear_rad = np.radians(shear)
+        
+#         # Create affine transformation matrix for the keypoints
+#         # Rotation, scaling, and shear combined matrix
+#         transform_matrix = np.array([
+#             [scale * np.cos(angle_rad + shear_rad), -scale * np.sin(angle_rad)],
+#             [scale * np.sin(angle_rad + shear_rad),  scale * np.cos(angle_rad)]
+#         ])
+        
+#         # Translation matrix
+#         tx, ty = translate
+#         transform_matrix = np.hstack([transform_matrix, np.array([[tx], [ty]])])
+        
+#         # Apply transformation to each keypoint
+#         for i in np.arange(0, 6, step=2):
+#             y = img_height - labels[i+1]
+#             pt = np.array([labels[i], y, 1])
+#             transformed_pt = transform_matrix @ pt
+#             labels[i] = transformed_pt[0]
+#             labels[i+1] = img_height - transformed_pt[1]
+
+#         return image, labels
+
 
 class ImageOnlyTransform:
     """Wrapper to apply an image-only transform in a pipeline where labels or keypoints are also present."""
@@ -484,6 +606,7 @@ class ImageOnlyTransform:
         image = self.transform(image)  # Apply the transform only on the image
         return image, keypoints  # Return the unchanged keypoints
     
+
 class RandomFlip:
     """Randomly flip image along an x/y axes"""
     def __init__(self, xprob, yprob):
@@ -496,12 +619,12 @@ class RandomFlip:
         if flipx:
             image = image.transpose(Image.FLIP_LEFT_RIGHT)
             labels[0:6:2] = 1 - labels[0:6:2]
-            labels[8] = math.pi - labels[8]
+            # labels[8] = math.pi - labels[8]
             labels[6], labels[7] = labels[7], labels[6]
         if flipy:
             image = image.transpose(Image.FLIP_TOP_BOTTOM)
             labels[1:6:2] = 1 - labels[1:6:2]
-            labels[8] = -labels[8]
+            # labels[8] = -labels[8]
             labels[6], labels[7] = labels[7], labels[6]
             
         return image, labels
@@ -520,7 +643,7 @@ class ResNetTransformPipeline:
     def __init__(self, u, sd, augment=False):
         if augment:
             self.transforms = [
-                TransformKeypoints(),                                                        # transform keypoints to 0 to 1 range
+                # TransformKeypoints(),                                                        # transform keypoints to 0 to 1 range
                 # RotateTransform(angle_range=(-5, 5)),                                      # Rotate image and keypoints
                 ImageOnlyTransform(transforms.Grayscale(num_output_channels=3)),             # Convert to 3-channel grayscale
                 ImageOnlyTransform(transforms.Resize((224, 224))),                           # Resize image
@@ -530,7 +653,7 @@ class ResNetTransformPipeline:
             ]
         else:
             self.transforms = [
-                TransformKeypoints(),
+                # TransformKeypoints(),
                 ImageOnlyTransform(transforms.Grayscale(num_output_channels=3)),             # Convert to 3-channel grayscale
                 ImageOnlyTransform(transforms.Resize((224, 224))),                           # Resize image and scale keypoints
                 ImageOnlyTransform(transforms.ToTensor()),                                   # Convert image to tensor
@@ -548,7 +671,7 @@ class SmallNetTransformPipeline:
     def __init__(self, u, sd, augment=False):
         if augment:
             self.transforms = [
-                TransformKeypoints(),            
+                # TransformKeypoints(),            
                 # RotateTransform(angle_range=(-15, 15)),                                              # transform keypoints to 0 to 1 range
                 ImageOnlyTransform(transforms.Resize((IMG_X_DIM, IMG_Y_DIM))),                           # Resize image
                 ImageOnlyTransform(transforms.ToTensor()),                                   # Convert image to tensor
@@ -557,7 +680,7 @@ class SmallNetTransformPipeline:
             ]
         else:
             self.transforms = [
-                TransformKeypoints(),
+                # TransformKeypoints(),
                 ImageOnlyTransform(transforms.Resize((IMG_X_DIM, IMG_Y_DIM))),                           # Resize image
                 ImageOnlyTransform(transforms.ToTensor()),                                   # Convert image to tensor
                 ImageOnlyTransform(transforms.Normalize(mean=[u], std=[sd])),  # Normalize for 3 channels
@@ -591,7 +714,7 @@ def get_mu_sigma_outputs(dir, keys=None):
             "yolk_y_position",
             "left_eye_angle",
             "right_eye_angle",
-            "heading_angle"
+            # "heading_angle"
             ]
         
     ff = os.listdir(dir)
@@ -602,6 +725,7 @@ def get_mu_sigma_outputs(dir, keys=None):
                 all_output = np.zeros((len(ff), len(keys)))
             for j, k in enumerate(keys):
                 all_output[i, j] = _annotations[k]
+    all_output[:, :6] = all_output[:, :6] / IMG_X_DIM
     mu = np.mean(all_output, axis=0)
     sigma = np.std(all_output, axis=0)
     return mu, sigma

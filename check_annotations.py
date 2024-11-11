@@ -21,6 +21,25 @@ def create_vector(x_start, y_start, angle_rad, length):
     
     return (x_end, y_end)
 
+def create_keypoints(x_mid, y_mid, angle_rad, length, nkeypoints):
+
+    length_step = length / nkeypoints
+    steps = np.arange(0, length+length_step, length_step)
+
+    p_keypoints = []
+    n_keypoints = []
+    for s in steps:
+        x = x_mid + s * math.cos(angle_rad)
+        y = y_mid + s * math.sin(angle_rad)
+        p_keypoints.append((x, y))
+
+        if s != 0:
+            x = x_mid - s * math.cos(angle_rad)
+            y = y_mid - s * math.sin(angle_rad)
+            n_keypoints.append((x, y))
+    
+    return n_keypoints[::-1] + p_keypoints
+
 def is_point_right_of_vector(A, B, P):
     """
     Check if point P is to the right of the vector AB.
@@ -58,6 +77,10 @@ for fname in os.listdir(IMG_DIR)[30:40]:
     rex, rey = create_vector(rx, ry, annot["right_eye_angle"]+annot["heading_angle"], 5)
     yex, yey = create_vector(yx, yy, annot["heading_angle"], 15)
 
+    left_keypoints = create_keypoints(lx, ly, annot["left_eye_angle"]+annot["heading_angle"], 5, 2)
+    right_keypoints = create_keypoints(rx, ry, annot["right_eye_angle"]+annot["heading_angle"], 5, 2)
+    heading_keypoints = create_keypoints(yx, yy, annot["heading_angle"], 15, 3)
+
     right_is_right = is_point_right_of_vector((yx, yy), (yex, yey), (lx, ly))
 
     if right_is_right:
@@ -68,16 +91,24 @@ for fname in os.listdir(IMG_DIR)[30:40]:
     f, ax = plt.subplots(1, 1, figsize=(5, 5))
 
     ax.imshow(img)
-    ax.scatter(lx, ly, c="tab:orange")
-    ax.plot([lx, lex], [ly, ley], "tab:orange")
-    ax.scatter(rx, ry, c="tab:blue")
-    ax.plot([rx, rex], [ry, rey], "tab:blue")
-    ax.scatter(yx, yy, c="r")
-    ax.plot([yx, yex], [yy, yey], "r")
+    # ax.scatter(lx, ly, c="tab:orange")
+    # ax.plot([lx, lex], [ly, ley], "tab:orange")
+    # ax.scatter(rx, ry, c="tab:blue")
+    # ax.plot([rx, rex], [ry, rey], "tab:blue")
+    # ax.scatter(yx, yy, c="r")
+    # ax.plot([yx, yex], [yy, yey], "r")
+    for kk in left_keypoints:
+        ax.scatter(kk[0], kk[1], s=25)
+    for kk in right_keypoints:
+        ax.scatter(kk[0], kk[1], s=25)
+    for kk in heading_keypoints:
+        ax.scatter(kk[0], kk[1], s=25)
     hed = round(np.rad2deg(annot['heading_angle']), 2)
     led = round(np.rad2deg(annot['left_eye_angle']), 2)
     red = round(np.rad2deg(annot['right_eye_angle']), 2)
     ax.set_title(f"h: {hed}, l: {led}, r: {red}, {iscorrect}")
+
+    # plt.close(f)
 
 
 # check that all right eye angles are actually to the right
@@ -117,3 +148,8 @@ ax.hist(right_angles, bins=np.arange(-np.pi, np.pi, step=0.1), histtype="step", 
 ax.legend(frameon=False)
 ax.set_xlabel("Angle (rads)")
 
+f, ax = plt.subplots(1, 1, figsize=(6, 3))
+
+ax.hist(left_angles-right_angles, bins=np.arange(-np.pi/2, np.pi/2, step=0.02), histtype="step", lw=2, label="left minus right")
+ax.legend(frameon=False)
+ax.set_xlabel("Angle (rads)")

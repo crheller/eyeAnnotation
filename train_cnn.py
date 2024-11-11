@@ -13,7 +13,7 @@ import math
 
 def train_model(model, train_loader, val_loader, l2_penalty=None, num_epochs=50, device="cuda"):
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=l2_penalty)
+    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=l2_penalty)
 
     model = model.to(device)
     save_loss = np.zeros(num_epochs)
@@ -75,13 +75,13 @@ train_dataset = EyeAngleDatasetResNet(
     image_dir=IMG_DIR,
     label_dir=ANNOT_DIR,
     transform=transform,
-    scale_output=None
+    scale_output=scale_output
 )
 validation_dataset = EyeAngleDatasetResNet(
     image_dir=IMG_VAL_DIR,
     label_dir=ANNOT_VAL_DIR,
     transform=val_transform,
-    scale_output=None
+    scale_output=scale_output
 )
 
 # Create data loaders
@@ -89,8 +89,8 @@ train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_worker
 val_loader = DataLoader(validation_dataset, batch_size=32, shuffle=True, num_workers=4)
 
 # Initialize model
-model, PATH = ShallowCNN(dropout_rate=0.3), "SavedModels/ShallowNet.pt" # good parity between training / test, but doesn't get too low (and eventually overfits too)
-model, PATH = DeepCNN(dropout_rate=0.3), "SavedModels/DeepNet.pt" # can get training loss lower, but seems to overfit slightly more
+model, PATH = ShallowCNN(dropout_rate=0.3, num_outputs=8), "SavedModels/ShallowNet.pt" # good parity between training / test, but doesn't get too low (and eventually overfits too)
+# model, PATH = DeepCNN(dropout_rate=0.3), "SavedModels/DeepNet.pt" # can get training loss lower, but seems to overfit slightly more
 
 # Train model
 l2_penalty = 1e-5
@@ -110,7 +110,8 @@ torch.save(model.state_dict(), PATH)
 
 # Load
 device = "cuda:0"
-loadedmodel = DeepCNN()
+# loadedmodel = DeepCNN()
+loadedmodel = ShallowCNN(num_outputs=8)
 loadedmodel.load_state_dict(torch.load(PATH, weights_only=True))
 loadedmodel.eval()
 loadedmodel.to(device)
@@ -122,6 +123,19 @@ def create_vector(x_start, y_start, angle_rad, length):
     y_end = y_start + length * math.sin(angle_rad)
     
     return (x_end, y_end)
+
+def compute_heading_angle(p1, p2):
+    # Calculate the differences in x and y
+    dx = p2[0] - p1[0]
+    dy = p2[1] - p1[1]
+    
+    # Calculate the angle in radians and convert to degrees
+    angle_rad = math.atan2(dy, dx)
+    
+    return angle_rad
+
+def invert_scale(labels, scale_output):
+    return (labels * scale_output[1]) + scale_output[0]
 
 ii = iter(val_loader)
 # ii = iter(train_loader)
@@ -137,13 +151,15 @@ for i in range(0, 16):
     imgcpu = np.array(img.to("cpu"))[0, 0, :, :]
 
     # xsize, ysize = imgcpu.shape
+    pred = invert_scale(pred, scale_output)
     pred[0, :6] = pred[0, :6] * 60
     lx, ly = pred[0, 0], pred[0, 1]
     rx, ry = pred[0, 2], pred[0, 3]
     yx, yy = pred[0, 4], pred[0, 5]
     left_eye_angle = pred[0, 6] #/ 100
     right_eye_angle = pred[0, 7] #/ 100
-    heading_angle = pred[0, 8] #/ 50
+    # heading_angle = pred[0, 8] #/ 50
+    heading_angle = compute_heading_angle((yx, yy), ((lx+rx)/2, (ly+ry)/2))
 
     lex, ley = create_vector(lx, ly, left_eye_angle + heading_angle, 5)
     rex, rey = create_vector(rx, ry, right_eye_angle + heading_angle, 5)
